@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { ArrowLeft, Plus, Users, X, Loader2, ShieldCheck, Sparkles, Upload, Mic, FileJson, Trash2, AlertTriangle, Play, Square } from "lucide-react";
+import { CostBadge } from "@/components/ui/CostBadge";
+import { COSTS } from "@/lib/costs";
 
 interface Character {
   id: string;
@@ -351,13 +353,18 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
                     <p className="text-gray-500 text-xs">Pas d'image</p>
                   </div>
                 )}
-                <div className="absolute bottom-2 left-2 right-2 flex gap-2">
-                  <button onClick={() => generateImage(char)} disabled={generatingImage === char.id} className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-purple-600/90 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg backdrop-blur-sm transition-all">
-                    {generatingImage === char.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} IA
-                  </button>
-                  <button onClick={() => { setPendingUploadCharId(char.id); fileInputRef.current?.click(); }} disabled={uploadingImage === char.id} className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-blue-600/90 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg backdrop-blur-sm transition-all">
-                    {uploadingImage === char.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} Photo
-                  </button>
+                <div className="absolute bottom-2 left-2 right-2 space-y-1">
+                  <div className="flex gap-2">
+                    <button onClick={() => generateImage(char)} disabled={generatingImage === char.id} className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-purple-600/90 hover:bg-purple-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg backdrop-blur-sm transition-all">
+                      {generatingImage === char.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />} IA
+                    </button>
+                    <button onClick={() => { setPendingUploadCharId(char.id); fileInputRef.current?.click(); }} disabled={uploadingImage === char.id} className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-blue-600/90 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg backdrop-blur-sm transition-all">
+                      {uploadingImage === char.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />} Photo
+                    </button>
+                  </div>
+                  <div className="flex justify-center">
+                    <CostBadge cost={COSTS["dalle3-standard-1024"]} label="DALL-E 3" />
+                  </div>
                 </div>
               </div>
 

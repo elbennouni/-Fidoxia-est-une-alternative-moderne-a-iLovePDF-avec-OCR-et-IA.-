@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { ArrowLeft, Video, Loader2, Copy, ExternalLink } from "lucide-react";
+import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
+import { COSTS } from "@/lib/costs";
 
 interface Scene {
   id: string;
@@ -58,19 +60,32 @@ export default function VideoPage({ params }: { params: Promise<{ id: string }> 
 
       <div className="mb-6 grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
-          { name: "Kling AI", url: "https://klingai.com", color: "blue", desc: "Best for character animation" },
-          { name: "Runway ML", url: "https://runwayml.com", color: "purple", desc: "Gen-3 Turbo" },
-          { name: "Replicate", url: "https://replicate.com", color: "orange", desc: "Multiple models available" },
+          { name: "Kling AI", url: "https://klingai.com", desc: "Meilleur pour l'animation", cost5s: COSTS["kling-5s"], cost10s: COSTS["kling-10s"] },
+          { name: "Runway ML", url: "https://runwayml.com", desc: "Gen-3 Turbo", cost5s: COSTS["runway-5s"], cost10s: COSTS["runway-10s"] },
+          { name: "Replicate", url: "https://replicate.com", desc: "Modèles variés", cost5s: COSTS["replicate-video"], cost10s: COSTS["replicate-video"] * 2 },
         ].map(p => (
-          <a key={p.name} href={p.url} target="_blank" rel="noreferrer" className="flex items-center justify-between p-3 bg-[#13131a] border border-[#2a2a3e] hover:border-gray-500 rounded-xl transition-all">
+          <a key={p.name} href={p.url} target="_blank" rel="noreferrer" className="flex items-center justify-between p-3 bg-[#13131a] border border-[#2a2a3e] hover:border-gray-500 rounded-xl transition-all group">
             <div>
-              <p className="font-semibold text-white text-sm">{p.name}</p>
-              <p className="text-xs text-gray-400">{p.desc}</p>
+              <p className="font-semibold text-white text-sm group-hover:text-purple-300 transition-colors">{p.name}</p>
+              <p className="text-xs text-gray-400 mb-1">{p.desc}</p>
+              <div className="flex gap-2">
+                <CostBadge cost={p.cost5s} label="5s" />
+                <CostBadge cost={p.cost10s} label="10s" />
+              </div>
             </div>
             <ExternalLink className="w-4 h-4 text-gray-500" />
           </a>
         ))}
       </div>
+
+      {scenes.length > 0 && (
+        <div className="mb-4 flex items-center justify-between">
+          <p className="text-sm text-gray-400">{scenes.length} scènes avec prompts vidéo</p>
+          <CostSummary items={[
+            { label: "Kling 5s × scènes", cost: COSTS["kling-5s"], qty: scenes.length },
+          ]} />
+        </div>
+      )}
 
       {loading ? (
         <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-purple-400" /></div>

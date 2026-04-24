@@ -8,6 +8,8 @@ import {
   ArrowLeft, Zap, Download, Loader2, Sparkles, CheckCircle,
   Clock, AlertCircle, Image, Volume2, Video, ChevronDown, ChevronUp, Copy, FileJson
 } from "lucide-react";
+import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
+import { COSTS } from "@/lib/costs";
 
 interface Scene {
   id: string;
@@ -179,10 +181,13 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
               <Link href={`/episodes/${id}/import`} className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-xl transition-all">
                 <FileJson className="w-4 h-4" /> Importer JSON
               </Link>
-              <button onClick={runPipeline} disabled={running} className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all">
-                {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                {running ? "Génération..." : "Générer Pipeline"}
-              </button>
+              <div className="flex flex-col items-end gap-1">
+                <button onClick={runPipeline} disabled={running} className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all">
+                  {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                  {running ? "Génération..." : "Générer Pipeline"}
+                </button>
+                <CostBadge cost={COSTS["gpt4o-script"] + COSTS["gpt4o-artistic"] + (COSTS["gpt4o-qc"] * 8)} label="pipeline GPT" />
+              </div>
               {episode.scenes.length > 0 && (
                 <>
                   <Link href={`/episodes/${id}/storyboard`} className="flex items-center gap-2 px-4 py-2.5 bg-[#1e1e2e] border border-[#2a2a3e] hover:border-blue-500/50 text-gray-300 text-sm rounded-xl transition-all">
@@ -219,7 +224,14 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
           <Sparkles className="w-12 h-12 text-gray-600 mx-auto mb-4" />
           <p className="text-xl font-bold text-white mb-2">Prêt à générer</p>
           <p className="text-gray-400 mb-1">Cliquez sur "Générer Pipeline" pour lancer les agents IA :</p>
-          <p className="text-gray-500 text-sm mb-6">Scénario → Scènes → Storyboard → Audio → Contrôle qualité → Correction automatique</p>
+          <p className="text-gray-500 text-sm mb-3">Scénario → Scènes → Storyboard → Audio → Contrôle qualité → Correction automatique</p>
+          <div className="flex justify-center mb-6">
+            <CostSummary items={[
+              { label: "Script GPT-4o", cost: COSTS["gpt4o-script"] },
+              { label: "QC × 8 scènes", cost: COSTS["gpt4o-qc"], qty: 8 },
+              { label: "Audio plan", cost: COSTS["gpt4o-script"] },
+            ]} />
+          </div>
           <button onClick={runPipeline} disabled={running} className="px-8 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all flex items-center gap-2 mx-auto">
             {running ? <Loader2 className="w-5 h-5 animate-spin" /> : <Zap className="w-5 h-5" />}
             {running ? "Génération en cours..." : "Générer Pipeline Complet"}
@@ -283,14 +295,19 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
                             </div>
                           )}
                         </div>
-                        <button
-                          onClick={() => generateSceneImage(scene)}
-                          disabled={generatingSceneImage === scene.id}
-                          className="w-full flex items-center justify-center gap-2 py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-600/30 text-purple-300 text-sm rounded-xl transition-all disabled:opacity-50"
-                        >
-                          {generatingSceneImage === scene.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                          {scene.imageUrl ? "Regénérer l'image" : "Générer l'image DALL-E"}
-                        </button>
+                        <div className="space-y-1">
+                          <button
+                            onClick={() => generateSceneImage(scene)}
+                            disabled={generatingSceneImage === scene.id}
+                            className="w-full flex items-center justify-center gap-2 py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-600/30 text-purple-300 text-sm rounded-xl transition-all disabled:opacity-50"
+                          >
+                            {generatingSceneImage === scene.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                            {scene.imageUrl ? "Regénérer" : "Générer DALL-E"}
+                          </button>
+                          <div className="flex justify-center">
+                            <CostBadge cost={episode.format === "9:16" ? COSTS["dalle3-standard-portrait"] : COSTS["dalle3-standard-landscape"]} label="img" />
+                          </div>
+                        </div>
                       </div>
 
                       {/* Right: script info */}

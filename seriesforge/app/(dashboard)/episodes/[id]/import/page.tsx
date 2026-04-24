@@ -8,6 +8,8 @@ import {
   ArrowLeft, Upload, Sparkles, Loader2, CheckCircle, ChevronDown, ChevronUp,
   Palette, Copy, Image, Zap, FileJson, Info
 } from "lucide-react";
+import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
+import { COSTS } from "@/lib/costs";
 
 interface ArtisticDirection {
   colorPalette: string;
@@ -215,17 +217,26 @@ export default function ImportScenarioPage({ params }: { params: Promise<{ id: s
             />
           </div>
 
-          <button
-            onClick={handleImport}
-            disabled={importing || !jsonText.trim() || !!jsonError}
-            className="w-full flex items-center justify-center gap-3 py-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-lg rounded-xl transition-all glow-purple"
-          >
-            {importing ? (
-              <><Loader2 className="w-5 h-5 animate-spin" /> Analyse en cours...</>
-            ) : (
-              <><Sparkles className="w-5 h-5" /> Analyser + Créer Direction Artistique</>
-            )}
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={handleImport}
+              disabled={importing || !jsonText.trim() || !!jsonError}
+              className="w-full flex items-center justify-center gap-3 py-4 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-lg rounded-xl transition-all glow-purple"
+            >
+              {importing ? (
+                <><Loader2 className="w-5 h-5 animate-spin" /> Analyse en cours...</>
+              ) : (
+                <><Sparkles className="w-5 h-5" /> Analyser + Créer Direction Artistique</>
+              )}
+            </button>
+            <div className="flex justify-center">
+              <CostSummary items={[
+                { label: "Analyse scénario", cost: COSTS["gpt4o-import"] },
+                { label: "Direction artistique", cost: COSTS["gpt4o-artistic"] },
+                { label: "Prompts (~8 scènes)", cost: COSTS["gpt4o-qc"], qty: 8 },
+              ]} />
+            </div>
+          </div>
         </div>
       ) : (
         <div className="space-y-6">
@@ -238,14 +249,17 @@ export default function ImportScenarioPage({ params }: { params: Promise<{ id: s
               <p className="text-green-400 text-sm mt-2">{result.sceneCount} scènes · prompts images et vidéos générés</p>
             </div>
             <div className="flex flex-col gap-2">
-              <button
-                onClick={generateAllImages}
-                disabled={generatingImages}
-                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-all"
-              >
-                {generatingImages ? <Loader2 className="w-4 h-4 animate-spin" /> : <Image className="w-4 h-4" />}
-                {generatingImages ? "Génération..." : "Générer toutes les images"}
-              </button>
+              <div className="flex flex-col items-end gap-1">
+                <button
+                  onClick={generateAllImages}
+                  disabled={generatingImages}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-all"
+                >
+                  {generatingImages ? <Loader2 className="w-4 h-4 animate-spin" /> : <Image className="w-4 h-4" />}
+                  {generatingImages ? "Génération..." : "Générer toutes les images"}
+                </button>
+                <CostBadge cost={COSTS["dalle3-standard-portrait"] * (result?.sceneCount || 8)} label={`${result?.sceneCount || 8} imgs`} />
+              </div>
               <Link
                 href={`/episodes/${id}/editor`}
                 className="flex items-center justify-center gap-2 px-4 py-2 bg-[#1e1e2e] border border-[#2a2a3e] hover:border-purple-500/50 text-gray-300 text-sm rounded-xl transition-all"

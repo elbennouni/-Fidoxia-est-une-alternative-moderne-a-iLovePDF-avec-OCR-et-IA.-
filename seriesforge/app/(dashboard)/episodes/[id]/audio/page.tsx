@@ -8,6 +8,8 @@ import {
   ArrowLeft, Volume2, Loader2, Copy, Music, Mic, Play, Pause, Sparkles,
   ExternalLink, CheckCircle, X, Settings, Square
 } from "lucide-react";
+import { CostBadge } from "@/components/ui/CostBadge";
+import { COSTS } from "@/lib/costs";
 
 interface HeyGenVoice {
   voice_id: string;
@@ -358,14 +360,17 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                             </div>
                           )}
                         </div>
-                        <button
-                          onClick={() => generateVoiceForScene(scene, scene.narration!, "Narrateur")}
-                          disabled={!!generatingVoice}
-                          className="flex items-center gap-1 px-2 py-1.5 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-600/30 text-orange-300 text-xs rounded-lg transition-all flex-shrink-0"
-                        >
-                          {generatingVoice === `${scene.id}-Narrateur` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                          Générer
-                        </button>
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                          <button
+                            onClick={() => generateVoiceForScene(scene, scene.narration!, "Narrateur")}
+                            disabled={!!generatingVoice}
+                            className="flex items-center gap-1 px-2 py-1.5 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-600/30 text-orange-300 text-xs rounded-lg transition-all"
+                          >
+                            {generatingVoice === `${scene.id}-Narrateur` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                            Voix
+                          </button>
+                          <CostBadge cost={COSTS["heygen-tts"] * Math.max(1, Math.ceil((scene.narration?.length || 100) / 1000))} label="TTS" />
+                        </div>
                       </div>
                     </div>
                   )}
@@ -406,15 +411,18 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                                 </div>
                                 <p className="text-sm text-gray-200 leading-relaxed">{line.line}</p>
                               </div>
-                              <button
-                                onClick={() => generateVoiceForScene(scene, line.line, line.character)}
-                                disabled={!!generatingVoice || !hasVoice}
-                                title={!hasVoice ? `Assignez d'abord une voix à ${line.character}` : "Générer la voix"}
-                                className="flex items-center gap-1 px-2 py-1.5 bg-orange-600/20 hover:bg-orange-600/40 disabled:opacity-40 disabled:cursor-not-allowed border border-orange-600/30 text-orange-300 text-xs rounded-lg transition-all flex-shrink-0"
-                              >
-                                {generatingVoice === `${scene.id}-${line.character}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                                Voix
-                              </button>
+                              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                                <button
+                                  onClick={() => generateVoiceForScene(scene, line.line, line.character)}
+                                  disabled={!!generatingVoice || !hasVoice}
+                                  title={!hasVoice ? `Assignez d'abord une voix à ${line.character}` : "Générer la voix"}
+                                  className="flex items-center gap-1 px-2 py-1.5 bg-orange-600/20 hover:bg-orange-600/40 disabled:opacity-40 disabled:cursor-not-allowed border border-orange-600/30 text-orange-300 text-xs rounded-lg transition-all"
+                                >
+                                  {generatingVoice === `${scene.id}-${line.character}` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                  Voix
+                                </button>
+                                <CostBadge cost={COSTS["heygen-tts"] * Math.max(1, Math.ceil(line.line.length / 1000))} label="TTS" />
+                              </div>
                             </div>
                           );
                         })}

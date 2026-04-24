@@ -4,7 +4,9 @@ import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { ArrowLeft, Image, CheckCircle, Loader2, Copy } from "lucide-react";
+import { ArrowLeft, Image, CheckCircle, Loader2, Copy, Sparkles } from "lucide-react";
+import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
+import { COSTS } from "@/lib/costs";
 
 interface Scene {
   id: string;
@@ -25,6 +27,7 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
   const router = useRouter();
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [episodeTitle, setEpisodeTitle] = useState("");
+  const [episodeFormat, setEpisodeFormat] = useState("9:16");
   const [loading, setLoading] = useState(true);
 
   useEffect(() => { fetchData(); }, [id]);
@@ -35,6 +38,7 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
       if (res.status === 401) { router.push("/login"); return; }
       const data = await res.json();
       setEpisodeTitle(data.title);
+      setEpisodeFormat(data.format || "9:16");
       setScenes(data.scenes || []);
     } finally {
       setLoading(false);
@@ -62,8 +66,13 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
             <p className="text-gray-400 mt-1">{episodeTitle}</p>
           </div>
           {scenes.length > 0 && (
-            <div className="text-sm text-gray-400">
-              {validated}/{scenes.length} validated
+            <div className="flex items-center gap-3">
+              <span className="text-sm text-gray-400">{validated}/{scenes.length} validées</span>
+              <CostBadge
+                cost={(episodeFormat === "9:16" ? COSTS["dalle3-standard-portrait"] : COSTS["dalle3-standard-landscape"]) * scenes.length}
+                label={`${scenes.length} imgs`}
+                size="sm"
+              />
             </div>
           )}
         </div>
@@ -121,15 +130,21 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
                   </div>
                 )}
 
-                <div className="flex gap-2">
-                  {scene.imagePrompt && (
-                    <button
-                      onClick={() => copyPrompt(scene.imagePrompt!)}
-                      className="flex items-center gap-1 px-2 py-1 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-600/30 text-blue-300 text-xs rounded-lg transition-all"
-                    >
-                      <Copy className="w-3 h-3" /> Copy Prompt
-                    </button>
-                  )}
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex gap-2">
+                    {scene.imagePrompt && (
+                      <button
+                        onClick={() => copyPrompt(scene.imagePrompt!)}
+                        className="flex items-center gap-1 px-2 py-1 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-600/30 text-blue-300 text-xs rounded-lg transition-all"
+                      >
+                        <Copy className="w-3 h-3" /> Copier
+                      </button>
+                    )}
+                  </div>
+                  <CostBadge
+                    cost={episodeFormat === "9:16" ? COSTS["dalle3-standard-portrait"] : COSTS["dalle3-standard-landscape"]}
+                    label="DALL-E 3"
+                  />
                 </div>
               </div>
             </div>
