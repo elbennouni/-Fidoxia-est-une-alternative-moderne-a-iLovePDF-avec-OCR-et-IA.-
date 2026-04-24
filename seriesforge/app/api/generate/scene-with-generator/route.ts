@@ -121,6 +121,81 @@ export async function POST(req: NextRequest) {
       });
       imageUrl = (response.data ?? [])[0]?.url || "";
 
+    } else if (generator.provider === "Fal.ai" && process.env.FAL_API_KEY) {
+      const falResponse = await fetch(`https://fal.run/${generator.model}`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Key ${process.env.FAL_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt: prompt.slice(0, 2000),
+          image_size: format === "9:16" ? "portrait_16_9" : "landscape_16_9",
+          num_images: 1,
+          enable_safety_checker: false,
+          ...(generator.supportsImgToImg && refImages.length > 0 ? {
+            image_url: await toReplicateImageUri(refImages[0].url),
+            strength: 0.8,
+          } : {}),
+        }),
+      });
+      if (!falResponse.ok) throw new Error(`Fal.ai error: ${falResponse.status}`);
+      const falData = await falResponse.json();
+      imageUrl = falData.images?.[0]?.url || falData.image?.url || "";
+
+    } else if (generator.provider === "Together.ai" && process.env.TOGETHER_API_KEY) {
+      const togetherResponse = await fetch("https://api.together.xyz/v1/images/generations", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.TOGETHER_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: generator.model,
+          prompt: prompt.slice(0, 2000),
+          width,
+          height,
+          steps: 4,
+          n: 1,
+        }),
+      });
+      if (!togetherResponse.ok) throw new Error(`Together.ai error: ${togetherResponse.status}`);
+      const togetherData = await togetherResponse.json();
+      imageUrl = togetherData.data?.[0]?.url || "";
+
+    } else if (generator.provider === "HuggingFace" && process.env.HUGGINGFACE_API_KEY) {
+      const hfResponse = await fetch(`https://api-inference.huggingface.co/models/${generator.model}`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.HUGGINGFACE_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ inputs: prompt.slice(0, 1500) }),
+      });
+      if (!hfResponse.ok) throw new Error(`HuggingFace error: ${hfResponse.status}`);
+      const hfBlob = await hfResponse.blob();
+      const hfBuffer = Buffer.from(await hfBlob.arrayBuffer());
+      imageUrl = `data:image/jpeg;base64,${hfBuffer.toString("base64")}`;
+
+    } else if (generator.provider === "Stability AI" && process.env.STABILITY_API_KEY) {
+      const stabilityResponse = await fetch(`https://api.stability.ai/v2beta/${generator.model}`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${process.env.STABILITY_API_KEY}`,
+          "Accept": "image/*",
+        },
+        body: (() => {
+          const form = new FormData();
+          form.append("prompt", prompt.slice(0, 2000));
+          form.append("aspect_ratio", format === "9:16" ? "9:16" : "16:9");
+          form.append("output_format", "webp");
+          return form;
+        })(),
+      });
+      if (!stabilityResponse.ok) throw new Error(`Stability AI error: ${stabilityResponse.status}`);
+      const stabBuffer = Buffer.from(await stabilityResponse.arrayBuffer());
+      imageUrl = `data:image/webp;base64,${stabBuffer.toString("base64")}`;
+
     } else if (generator.provider === "Replicate" && generator.replicateModel) {
       const replicateInput: Record<string, unknown> = {
         prompt: prompt.slice(0, 2000),

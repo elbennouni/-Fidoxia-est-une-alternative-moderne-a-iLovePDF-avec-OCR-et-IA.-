@@ -8,39 +8,59 @@ import { Settings, Key, Eye, EyeOff, Save, Loader2, CheckCircle, ExternalLink } 
 const API_KEYS = [
   {
     key: "OPENAI_API_KEY",
-    label: "OpenAI API Key",
-    description: "Pour GPT-4o (scénarios, qualité) et DALL-E 3 (images)",
+    label: "OpenAI",
+    description: "GPT-4o (scénarios, QC) + DALL-E 3 (images) + Vision (analyse photos)",
     placeholder: "sk-proj-...",
     link: "https://platform.openai.com/api-keys",
     required: true,
-    color: "green",
   },
   {
     key: "REPLICATE_API_TOKEN",
-    label: "Replicate API Token",
-    description: "Pour la génération de vidéos (Kling, Stable Diffusion, etc.)",
+    label: "Replicate",
+    description: "FLUX, SDXL, Ideogram v2, Wan vidéo — img2img disponible",
     placeholder: "r8_...",
     link: "https://replicate.com/account/api-tokens",
     required: false,
-    color: "blue",
   },
   {
     key: "FAL_API_KEY",
-    label: "Fal.ai API Key",
-    description: "Alternative rapide pour images et vidéos",
-    placeholder: "fal-...",
+    label: "Fal.ai",
+    description: "FLUX Schnell (~$0.001/img), FLUX Dev img2img, Recraft v3 Pixar",
+    placeholder: "xxxxxxxx:xxxxxxxx",
     link: "https://fal.ai/dashboard/keys",
     required: false,
-    color: "purple",
+  },
+  {
+    key: "TOGETHER_API_KEY",
+    label: "Together.ai",
+    description: "FLUX Schnell 100% GRATUIT avec compte — idéal pour tests",
+    placeholder: "...",
+    link: "https://api.together.ai/settings/api-keys",
+    required: false,
+  },
+  {
+    key: "HUGGINGFACE_API_KEY",
+    label: "HuggingFace",
+    description: "FLUX Dev entièrement GRATUIT via Inference API",
+    placeholder: "hf_...",
+    link: "https://huggingface.co/settings/tokens",
+    required: false,
+  },
+  {
+    key: "STABILITY_API_KEY",
+    label: "Stability AI",
+    description: "Stable Diffusion Core ($0.003/img) et Ultra ($0.008/img)",
+    placeholder: "sk-...",
+    link: "https://platform.stability.ai/account/credits",
+    required: false,
   },
   {
     key: "HEYGEN_API_KEY",
-    label: "HeyGen API Key",
-    description: "Pour générer les voix des personnages",
+    label: "HeyGen",
+    description: "Voix TTS françaises pour personnages et narrateur",
     placeholder: "...",
     link: "https://app.heygen.com/settings?nav=API",
     required: false,
-    color: "orange",
   },
 ];
 
@@ -125,25 +145,21 @@ export default function SettingsPage() {
       </div>
 
       {/* Current status */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
-        {API_KEYS.map(({ key, label, color }) => {
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 mb-8">
+        {API_KEYS.map(({ key, label }) => {
           const hasKey = !!currentKeys[key];
           return (
-            <div key={key} className={`p-3 rounded-xl border text-center ${hasKey ? "bg-green-900/10 border-green-600/30" : "bg-[#13131a] border-[#2a2a3e]"}`}>
-              <div className={`text-lg mb-1 ${hasKey ? "text-green-400" : "text-gray-600"}`}>
-                {hasKey ? "✅" : "⚠️"}
-              </div>
-              <p className="text-xs font-medium text-white truncate">{label.replace(" API Key", "").replace(" API Token", "")}</p>
-              <p className={`text-xs mt-0.5 ${hasKey ? "text-green-400" : "text-gray-500"}`}>
-                {hasKey ? "Configurée" : "Manquante"}
-              </p>
+            <div key={key} className={`p-2.5 rounded-xl border text-center ${hasKey ? "bg-green-900/10 border-green-600/30" : "bg-[#13131a] border-[#2a2a3e]"}`}>
+              <div className={`text-base mb-0.5 ${hasKey ? "text-green-400" : "text-gray-600"}`}>{hasKey ? "✅" : "⚠️"}</div>
+              <p className="text-xs font-medium text-white truncate">{label}</p>
+              <p className={`text-xs mt-0.5 ${hasKey ? "text-green-400" : "text-gray-500"}`}>{hasKey ? "OK" : "Manquante"}</p>
             </div>
           );
         })}
       </div>
 
       <form onSubmit={handleSave} className="space-y-4">
-        {API_KEYS.map(({ key, label, description, placeholder, link, required, color }) => (
+        {API_KEYS.map(({ key, label, description, placeholder, link, required }) => (
           <div key={key} className="bg-[#13131a] border border-[#2a2a3e] rounded-xl p-5">
             <div className="flex items-start justify-between mb-3">
               <div>
