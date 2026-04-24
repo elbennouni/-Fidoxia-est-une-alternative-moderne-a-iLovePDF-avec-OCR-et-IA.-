@@ -6,3 +6,6 @@ node_modules
 .env.local
 prisma/dev.db
 prisma/dev.db-journal
+tmp/
+public/assembled/*.mp4
+public/uploads/voices/*.mp3

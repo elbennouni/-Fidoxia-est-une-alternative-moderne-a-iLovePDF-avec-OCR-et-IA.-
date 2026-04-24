@@ -1,8 +1,0 @@
-file '/workspace/seriesforge/tmp/05e19ac5/scene-1.mp4'
-file '/workspace/seriesforge/tmp/05e19ac5/scene-2.mp4'
-file '/workspace/seriesforge/tmp/05e19ac5/scene-3.mp4'
-file '/workspace/seriesforge/tmp/05e19ac5/scene-4.mp4'
-file '/workspace/seriesforge/tmp/05e19ac5/scene-5.mp4'
-file '/workspace/seriesforge/tmp/05e19ac5/scene-6.mp4'
-file '/workspace/seriesforge/tmp/05e19ac5/scene-7.mp4'
-file '/workspace/seriesforge/tmp/05e19ac5/scene-8.mp4'
