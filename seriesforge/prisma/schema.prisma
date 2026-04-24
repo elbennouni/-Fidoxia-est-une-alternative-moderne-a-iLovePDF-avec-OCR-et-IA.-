@@ -15,14 +15,15 @@ model User {
 }
 
 model Series {
-  id            String        @id @default(cuid())
-  userId        String
-  title         String
-  description   String?
-  visualStyle   String
-  tone          String
-  defaultFormat String        @default("9:16")
-  createdAt     DateTime      @default(now())
+  id             String        @id @default(cuid())
+  userId         String
+  title          String
+  description    String?
+  visualStyle    String
+  tone           String
+  defaultFormat  String        @default("9:16")
+  coverImageUrl  String?
+  createdAt      DateTime      @default(now())
   user          User          @relation(fields: [userId], references: [id])
   characters    Character[]
   environments  Environment[]

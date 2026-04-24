@@ -14,33 +14,87 @@ export async function POST(req: NextRequest) {
 
     const scene = await prisma.scene.findFirst({
       where: { id: sceneId, episode: { series: { userId: user.id } } },
-      include: { episode: { include: { series: true } } },
+      include: {
+        episode: {
+          include: {
+            series: {
+              include: {
+                characters: true,
+                environments: true,
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!scene) return NextResponse.json({ error: "Scene not found" }, { status: 404 });
 
-    const prompt = scene.imagePrompt ||
-      `${scene.episode.series.visualStyle} cinematic keyframe, ${scene.location || "outdoor scene"}, ${scene.action || "dramatic moment"}, ${scene.emotion || "neutral"}, high quality animated still.`;
+    const { series } = scene.episode;
+    const format = scene.episode.format;
+
+    // Get characters present in this scene
+    const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
+    const presentChars = series.characters.filter(c =>
+      sceneCharNames.some(n => n.toLowerCase().includes(c.name.toLowerCase()))
+    );
+
+    // Get environment matching the scene location
+    const matchedEnv = series.environments.find(e =>
+      scene.location?.toLowerCase().includes(e.name.toLowerCase())
+    ) || series.environments[0];
+
+    // Build rich character block with consistency locks + voices
+    const charBlock = presentChars.length > 0
+      ? presentChars.map(c =>
+          `CHARACTER "${c.name}": ${c.physicalDescription}. Outfit: ${c.outfit}. CONSISTENCY LOCK: ${c.consistencyPrompt}${c.voiceProfile ? ` Voice: ${c.voiceProfile}` : ""}.`
+        ).join("\n")
+      : sceneCharNames.join(", ");
+
+    // Build environment block
+    const envBlock = matchedEnv
+      ? `LOCATION "${matchedEnv.name}": ${matchedEnv.description}${matchedEnv.lighting ? `. Lighting: ${matchedEnv.lighting}` : ""}${matchedEnv.mood ? `. Mood: ${matchedEnv.mood}` : ""}.`
+      : scene.location || "outdoor scene";
+
+    // Use existing image prompt if available, enhanced with character/env data
+    const basePrompt = scene.imagePrompt || `${series.visualStyle} cinematic keyframe of ${scene.action}`;
+
+    const richPrompt = `${series.visualStyle} cinematic keyframe, ${format} format.
+
+${charBlock}
+
+${envBlock}
+
+Scene action: ${scene.action || "dramatic moment"}.
+Emotion/atmosphere: ${scene.emotion || "neutral"}.
+Camera: ${scene.camera || "medium shot"}.
+
+Additional context: ${basePrompt.slice(0, 500)}
+
+Requirements: Maintain exact character visual identity as described. Same outfit, same physical appearance. No changes to character design. High quality ${series.visualStyle} animation style. Cinematic lighting and composition.`;
+
+    const size = format === "9:16" ? "1024x1792" : "1792x1024";
 
     const response = await openai.images.generate({
       model: "dall-e-3",
-      prompt: prompt.slice(0, 4000),
+      prompt: richPrompt.slice(0, 4000),
       n: 1,
-      size: scene.episode.format === "9:16" ? "1024x1792" : "1792x1024",
+      size: size as "1024x1024" | "1024x1792" | "1792x1024",
       quality: "standard",
     });
 
     const imageUrl = (response.data ?? [])[0]?.url;
     if (!imageUrl) throw new Error("No image generated");
 
-    await prisma.scene.update({
-      where: { id: sceneId },
-      data: { imageUrl },
-    });
+    await prisma.scene.update({ where: { id: sceneId }, data: { imageUrl } });
 
-    return NextResponse.json({ imageUrl, sceneId });
+    return NextResponse.json({
+      imageUrl,
+      sceneId,
+      charactersUsed: presentChars.map(c => c.name),
+      environmentUsed: matchedEnv?.name || null,
+    });
   } catch (error) {
-    console.error(error);
     const msg = error instanceof Error ? error.message : "Generation failed";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
