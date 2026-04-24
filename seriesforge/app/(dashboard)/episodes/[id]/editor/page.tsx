@@ -6,7 +6,7 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Zap, Download, Loader2, Sparkles, CheckCircle,
-  Clock, AlertCircle, Image, Volume2, Video, ChevronDown, ChevronUp, Copy, FileJson, X, Film
+  Clock, AlertCircle, Image, Volume2, Video, ChevronDown, ChevronUp, Copy, FileJson, X, Film, RotateCcw
 } from "lucide-react";
 import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
@@ -419,6 +419,13 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
             <div className="flex flex-wrap gap-2">
               <Link href={`/episodes/${id}/import`} className="flex items-center gap-2 px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-medium rounded-xl transition-all">
                 <FileJson className="w-4 h-4" /> Importer JSON
+              </Link>
+              <Link
+                href={`/episodes/${id}/import`}
+                className="flex items-center gap-2 px-4 py-2.5 bg-amber-900/20 border border-amber-600/40 hover:border-amber-500/50 text-amber-200 text-sm font-medium rounded-xl transition-all"
+                title="Colle un JSON exporté (Export JSON) pour remettre personnages, lieux et toutes les scènes de cet épisode"
+              >
+                <RotateCcw className="w-4 h-4" /> Restaurer export
               </Link>
               <div className="flex flex-col items-end gap-1">
             <button onClick={confirmRunPipeline} disabled={running} className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all">

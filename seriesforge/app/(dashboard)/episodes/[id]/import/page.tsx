@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import {
-  ArrowLeft, Upload, Sparkles, Loader2, CheckCircle, ChevronDown, ChevronUp,
-  Palette, Copy, Image, Zap, FileJson, Info
+  ArrowLeft, Sparkles, Loader2, CheckCircle, ChevronDown, ChevronUp,
+  Palette, Copy, Image as ImageIcon, Zap, FileJson, Info, RotateCcw
 } from "lucide-react";
 import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
@@ -82,6 +82,12 @@ export default function ImportScenarioPage({ params }: { params: Promise<{ id: s
   const [expandedScene, setExpandedScene] = useState<string | null>(null);
   const [jsonError, setJsonError] = useState("");
   const [showExample, setShowExample] = useState(false);
+  const [restoreText, setRestoreText] = useState("");
+  const [restoreJsonError, setRestoreJsonError] = useState("");
+  const [restoring, setRestoring] = useState(false);
+  const [replaceSeriesOnRestore, setReplaceSeriesOnRestore] = useState(true);
+  const [replaceCharsOnRestore, setReplaceCharsOnRestore] = useState(true);
+  const [replaceEnvsOnRestore, setReplaceEnvsOnRestore] = useState(true);
 
   function validateJson(text: string): boolean {
     try {
@@ -91,6 +97,60 @@ export default function ImportScenarioPage({ params }: { params: Promise<{ id: s
     } catch (e) {
       setJsonError(e instanceof Error ? e.message : "JSON invalide");
       return false;
+    }
+  }
+
+  function validateRestoreJson(text: string): boolean {
+    if (!text.trim()) {
+      setRestoreJsonError("");
+      return true;
+    }
+    try {
+      JSON.parse(text);
+      setRestoreJsonError("");
+      return true;
+    } catch (e) {
+      setRestoreJsonError(e instanceof Error ? e.message : "JSON invalide");
+      return false;
+    }
+  }
+
+  async function handleRestoreExport() {
+    if (!restoreText.trim()) {
+      toast.error("Colle le JSON exporté (menu Épisode → export JSON).");
+      return;
+    }
+    if (!validateRestoreJson(restoreText)) {
+      toast.error("Le JSON n'est pas valide");
+      return;
+    }
+    const parsed = JSON.parse(restoreText) as Record<string, unknown>;
+    if (!Array.isArray(parsed.scenes) || (parsed.scenes as unknown[]).length === 0) {
+      toast.error('L\'export doit contenir un tableau "scenes" non vide');
+      return;
+    }
+    setRestoring(true);
+    try {
+      const res = await fetch(`/api/episodes/${id}/import-json`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...parsed,
+          replaceSeriesMeta: replaceSeriesOnRestore,
+          replaceCharacters: replaceCharsOnRestore,
+          replaceEnvironments: replaceEnvsOnRestore,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(
+        `Restauré : ${data.characterCount} pers., ${data.sceneCount} scènes, ${data.environmentCount} lieux`
+      );
+      router.push(`/episodes/${id}/editor`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Restauration échouée");
+    } finally {
+      setRestoring(false);
     }
   }
 
@@ -151,12 +211,12 @@ export default function ImportScenarioPage({ params }: { params: Promise<{ id: s
     <div className="max-w-5xl mx-auto px-4 py-8">
       <div className="mb-6">
         <Link href={`/episodes/${id}/editor`} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-4 transition-colors w-fit">
-          <ArrowLeft className="w-4 h-4" /> Retour à l'éditeur
+          <ArrowLeft className="w-4 h-4" /> Retour à l&apos;éditeur
         </Link>
         <h1 className="text-3xl font-bold text-white flex items-center gap-3">
           <FileJson className="w-7 h-7 text-purple-400" /> Importer un Scénario
         </h1>
-        <p className="text-gray-400 mt-1">Colle ton scénario JSON de ChatGPT — l'IA l'analyse, crée les scènes et génère la direction artistique</p>
+        <p className="text-gray-400 mt-1">Colle ton scénario JSON de ChatGPT — l&apos;IA l&apos;analyse, crée les scènes et génère la direction artistique</p>
       </div>
 
       {!result ? (
@@ -166,8 +226,68 @@ export default function ImportScenarioPage({ params }: { params: Promise<{ id: s
             <Info className="w-5 h-5 text-blue-400 flex-shrink-0 mt-0.5" />
             <div className="text-sm text-blue-200">
               <p className="font-semibold mb-1">Formats acceptés</p>
-              <p className="text-blue-300">N'importe quel JSON — peu importe la structure. L'IA comprend tous les formats : scènes, actes, dialogues, descriptions, numérotations différentes, etc.</p>
+              <p className="text-blue-300">N&apos;importe quel JSON — peu importe la structure. L&apos;IA comprend tous les formats : scènes, actes, dialogues, descriptions, numérotations différentes, etc.</p>
             </div>
+          </div>
+
+          <div className="bg-amber-950/30 border border-amber-600/35 rounded-xl p-5">
+            <h2 className="text-lg font-bold text-white flex items-center gap-2 mb-2">
+              <RotateCcw className="w-5 h-5 text-amber-400" /> Restaurer personnages + épisode (export JSON)
+            </h2>
+            <p className="text-sm text-amber-100/90 mb-4">
+              Colle ici le fichier <strong>JSON complet</strong> généré par l&apos;export d&apos;épisode (même onglet ou écran d&apos;édition) pour remettre la série, les personnages, les lieux et toutes les scènes de <strong>cet</strong> épisode,
+              y compris voix, visuels et musique. Les données actuelles de l&apos;épisode et (selon options) de la série seront remplacées.
+            </p>
+            <textarea
+              value={restoreText}
+              onChange={e => { setRestoreText(e.target.value); if (e.target.value) validateRestoreJson(e.target.value); }}
+              placeholder="Colle le JSON d&apos;export ici (contient series, characters, episode, scenes)..."
+              rows={5}
+              className={`w-full px-4 py-3 bg-[#1e1e2e] border rounded-xl text-sm text-gray-200 placeholder-gray-600 focus:outline-none font-mono resize-none ${
+                restoreJsonError ? "border-red-500" : "border-amber-700/40 focus:border-amber-500/60"
+              }`}
+            />
+            {restoreJsonError && (
+              <p className="text-xs text-red-400 mt-2">⚠ {restoreJsonError}</p>
+            )}
+            <div className="flex flex-wrap gap-4 mt-3 text-sm text-amber-100/80">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={replaceSeriesOnRestore}
+                  onChange={e => setReplaceSeriesOnRestore(e.target.checked)}
+                  className="rounded border-amber-600/50"
+                />
+                Mettre à jour titre / style de la série
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={replaceCharsOnRestore}
+                  onChange={e => setReplaceCharsOnRestore(e.target.checked)}
+                  className="rounded border-amber-600/50"
+                />
+                Remplacer les personnages
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={replaceEnvsOnRestore}
+                  onChange={e => setReplaceEnvsOnRestore(e.target.checked)}
+                  className="rounded border-amber-600/50"
+                />
+                Remplacer les lieux
+              </label>
+            </div>
+            <button
+              type="button"
+              onClick={handleRestoreExport}
+              disabled={restoring || !restoreText.trim() || !!restoreJsonError}
+              className="mt-4 w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 bg-amber-700/90 hover:bg-amber-600 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all"
+            >
+              {restoring ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
+              {restoring ? "Restauration..." : "Restaurer depuis l&apos;export"}
+            </button>
           </div>
 
           {/* JSON Input */}
@@ -255,7 +375,7 @@ export default function ImportScenarioPage({ params }: { params: Promise<{ id: s
                   disabled={generatingImages}
                   className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-medium rounded-xl transition-all"
                 >
-                  {generatingImages ? <Loader2 className="w-4 h-4 animate-spin" /> : <Image className="w-4 h-4" />}
+                  {generatingImages ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImageIcon className="w-4 h-4" aria-hidden />}
                   {generatingImages ? "Génération..." : "Générer toutes les images"}
                 </button>
                 <CostBadge cost={COSTS["dalle3-standard-portrait"] * (result?.sceneCount || 8)} label={`${result?.sceneCount || 8} imgs`} />
@@ -264,7 +384,7 @@ export default function ImportScenarioPage({ params }: { params: Promise<{ id: s
                 href={`/episodes/${id}/editor`}
                 className="flex items-center justify-center gap-2 px-4 py-2 bg-[#1e1e2e] border border-[#2a2a3e] hover:border-purple-500/50 text-gray-300 text-sm rounded-xl transition-all"
               >
-                <Zap className="w-4 h-4" /> Voir dans l'éditeur
+                <Zap className="w-4 h-4" /> Voir dans l&apos;éditeur
               </Link>
             </div>
           </div>
@@ -277,7 +397,7 @@ export default function ImportScenarioPage({ params }: { params: Promise<{ id: s
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[
                 { label: "🎨 Palette de couleurs", value: result.artisticDirection.colorPalette },
-                { label: "💡 Style d'éclairage", value: result.artisticDirection.lightingStyle },
+                { label: "💡 Style d&apos;éclairage", value: result.artisticDirection.lightingStyle },
                 { label: "🎥 Style de caméra", value: result.artisticDirection.cameraStyle },
                 { label: "👤 Design des personnages", value: result.artisticDirection.characterDesignStyle },
                 { label: "🌄 Style des décors", value: result.artisticDirection.backgroundStyle },
@@ -346,8 +466,8 @@ export default function ImportScenarioPage({ params }: { params: Promise<{ id: s
                             ) : (
                               <div className="aspect-video bg-[#1e1e2e] border border-dashed border-[#2a2a3e] rounded-xl flex items-center justify-center">
                                 <div className="text-center p-4">
-                                  <Image className="w-6 h-6 text-gray-600 mx-auto mb-1" />
-                                  <p className="text-xs text-gray-500">Clique "Générer toutes les images"</p>
+                                  <ImageIcon className="w-6 h-6 text-gray-600 mx-auto mb-1" aria-hidden />
+                                  <p className="text-xs text-gray-500">Clique «&nbsp;Générer toutes les images&nbsp;»</p>
                                 </div>
                               </div>
                             )}
@@ -440,7 +560,7 @@ export default function ImportScenarioPage({ params }: { params: Promise<{ id: s
               href={`/episodes/${id}/editor`}
               className="flex-1 flex items-center justify-center gap-2 py-3 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-xl transition-all"
             >
-              <Zap className="w-5 h-5" /> Ouvrir dans l'éditeur complet
+              <Zap className="w-5 h-5" /> Ouvrir dans l&apos;éditeur complet
             </Link>
           </div>
         </div>
