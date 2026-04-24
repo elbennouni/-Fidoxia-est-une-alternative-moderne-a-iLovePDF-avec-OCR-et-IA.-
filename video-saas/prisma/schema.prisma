@@ -1,0 +1,209 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum VideoFormat {
+  VERTICAL_9_16
+  HORIZONTAL_16_9
+}
+
+enum StyleTheme {
+  PIXAR_3D
+  ANIME
+  CINEMATIC
+  FRUIT_DRAMA
+  CARTOON_2D
+  REALISTIC
+  LOW_POLY
+  STOP_MOTION
+  SCI_FI_NEON
+  DOCUMENTARY
+}
+
+enum PipelineStep {
+  SERIES_SETUP
+  CHARACTERS
+  ENVIRONMENTS
+  STORY
+  STORYBOARD
+  AUDIO
+  VIDEO
+  COMPLETE
+}
+
+enum QcStatus {
+  PENDING
+  PASS
+  FAIL
+}
+
+enum VoiceProvider {
+  HEYGEN
+  FALLBACK
+}
+
+enum LibraryAssetType {
+  INTRO
+  OUTRO
+  RECURRING_SCENE
+  TRANSITION
+  MUSIC
+  SFX
+}
+
+model User {
+  id           String         @id @default(cuid())
+  email        String         @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  series       Series[]
+  library      LibraryAsset[]
+}
+
+model Series {
+  id              String         @id @default(cuid())
+  userId          String
+  title           String
+  style           StyleTheme
+  format          VideoFormat
+  defaultDuration Int            @default(60)
+  tone            String
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  characters      Character[]
+  environments    Environment[]
+  episodes        Episode[]
+  assets          LibraryAsset[]
+}
+
+model Character {
+  id                  String      @id @default(cuid())
+  seriesId            String
+  name                String
+  physicalDescription String
+  outfit              String
+  personality         String
+  voiceProvider       VoiceProvider
+  voiceConfig         String
+  referenceImage      String?
+  consistencyId       String
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  series              Series      @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([seriesId, consistencyId])
+}
+
+model Environment {
+  id                String    @id @default(cuid())
+  seriesId          String
+  locationName      String
+  visualDescription String
+  lighting          String
+  mood              String
+  reusable          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  series            Series    @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+}
+
+model Episode {
+  id             String       @id @default(cuid())
+  seriesId       String
+  title          String
+  episodeNumber  Int
+  currentStep    PipelineStep @default(SERIES_SETUP)
+  scriptOverview String?
+  audioValidated Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  series         Series       @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  scenes         Scene[]
+
+  @@unique([seriesId, episodeNumber])
+}
+
+model Scene {
+  id               String           @id @default(cuid())
+  episodeId        String
+  sceneOrder       Int
+  action           String
+  charactersInShot String
+  emotion          String
+  location         String
+  qcStatus         QcStatus         @default(PENDING)
+  qcNotes          String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  episode          Episode          @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  storyboard       StoryboardFrame?
+  audio            AudioTake?
+  video            VideoShot?
+
+  @@unique([episodeId, sceneOrder])
+}
+
+model StoryboardFrame {
+  id              String   @id @default(cuid())
+  sceneId         String   @unique
+  prompt          String
+  imageUrl        String
+  provider        String
+  reusedFromScene String?
+  validated       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  scene           Scene    @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+}
+
+model AudioTake {
+  id           String   @id @default(cuid())
+  sceneId      String   @unique
+  narration    String
+  dialogue     String
+  voiceConfig  String
+  audioUrl     String
+  background   String?
+  sfx          String?
+  validated    Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  scene        Scene    @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+}
+
+model VideoShot {
+  id           String      @id @default(cuid())
+  sceneId      String      @unique
+  prompt       String
+  videoUrl     String
+  provider     String
+  format       VideoFormat
+  durationSec  Int
+  validated    Boolean     @default(false)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  scene        Scene       @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+}
+
+model LibraryAsset {
+  id          String           @id @default(cuid())
+  userId      String
+  seriesId    String?
+  type        LibraryAssetType
+  name        String
+  description String
+  fileUrl     String
+  reusable    Boolean          @default(true)
+  metadata    String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series      Series?          @relation(fields: [seriesId], references: [id], onDelete: SetNull)
+}
