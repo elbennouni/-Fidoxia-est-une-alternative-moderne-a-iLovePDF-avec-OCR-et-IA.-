@@ -6,7 +6,7 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Volume2, Loader2, Copy, Music, Mic, Play, Sparkles,
-  ExternalLink, CheckCircle, X, Settings, Square, Upload, Trash2, SlidersHorizontal
+  ExternalLink, CheckCircle, X, Settings, Square, Upload, Trash2, SlidersHorizontal, RotateCcw
 } from "lucide-react";
 import { CostBadge } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
@@ -201,6 +201,16 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
     }
   }
 
+  async function deleteSceneVoice(sceneId: string) {
+    try {
+      await fetch(`/api/scenes/${sceneId}/voice`, { method: "DELETE" });
+      toast.success("Audio supprimé");
+      fetchData();
+    } catch {
+      toast.error("Erreur suppression");
+    }
+  }
+
   async function generateNarratorVoice(scene: Scene, text: string) {
     if (!narratorVoiceId) {
       toast.error("Assignez d'abord une voix au Narrateur (section ci-dessus)");
@@ -313,10 +323,29 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
         <Link href={`/episodes/${id}/editor`} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-4 transition-colors w-fit">
           <ArrowLeft className="w-4 h-4" /> Retour à l'éditeur
         </Link>
-        <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-          <Volume2 className="w-7 h-7 text-orange-400" /> Audio & Voix HeyGen
-        </h1>
-        <p className="text-gray-400 mt-1">{episode.title}</p>
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-3xl font-bold text-white flex items-center gap-3">
+              <Volume2 className="w-7 h-7 text-orange-400" /> Audio & Voix HeyGen
+            </h1>
+            <p className="text-gray-400 mt-1">{episode.title}</p>
+          </div>
+          {episode.scenes.some(s => s.voiceUrl) && (
+            <button
+              onClick={async () => {
+                if (!confirm("Supprimer tous les audios générés pour regénérer ?")) return;
+                for (const scene of episode.scenes) {
+                  if (scene.voiceUrl) await fetch(`/api/scenes/${scene.id}/voice`, { method: "DELETE" });
+                }
+                toast.success("Tous les audios supprimés — vous pouvez maintenant les regénérer");
+                fetchData();
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-[#1e1e2e] hover:bg-red-600/20 border border-[#2a2a3e] hover:border-red-600/30 text-gray-400 hover:text-red-400 text-sm rounded-xl transition-all"
+            >
+              <RotateCcw className="w-4 h-4" /> Tout réinitialiser
+            </button>
+          )}
+        </div>
       </div>
 
       {/* HeyGen Connection Status */}
@@ -608,9 +637,25 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                         <div className="flex-1">
                           <p className="text-sm text-blue-200 italic leading-relaxed">&ldquo;{scene.narration}&rdquo;</p>
                           {scene.voiceUrl && (
-                            <div className="mt-2 flex items-center gap-2">
-                              <PlayButton url={scene.voiceUrl} id={`narration-${scene.id}`} />
-                              <audio controls src={scene.voiceUrl} className="h-7 flex-1" />
+                            <div className="mt-2 space-y-1.5">
+                              <div className="flex items-center gap-2">
+                                <PlayButton url={scene.voiceUrl} id={`narration-${scene.id}`} />
+                                <audio controls src={scene.voiceUrl} className="h-7 flex-1" />
+                              </div>
+                              <div className="flex gap-1.5">
+                                <button
+                                  onClick={() => deleteSceneVoice(scene.id)}
+                                  className="flex items-center gap-1 px-2 py-0.5 bg-[#1e1e2e] hover:bg-orange-600/20 border border-[#2a2a3e] hover:border-orange-600/30 text-gray-500 hover:text-orange-300 text-xs rounded-lg transition-all"
+                                >
+                                  <RotateCcw className="w-2.5 h-2.5" /> Regénérer
+                                </button>
+                                <button
+                                  onClick={() => deleteSceneVoice(scene.id)}
+                                  className="flex items-center gap-1 px-2 py-0.5 bg-[#1e1e2e] hover:bg-red-600/20 border border-[#2a2a3e] hover:border-red-600/30 text-gray-500 hover:text-red-400 text-xs rounded-lg transition-all"
+                                >
+                                  <Trash2 className="w-2.5 h-2.5" /> Supprimer
+                                </button>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -701,9 +746,30 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                   {/* Audio player if generated */}
                   {scene.voiceUrl && (
                     <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1">
-                        <Play className="w-3 h-3" /> Audio généré
-                      </p>
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-xs text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                          <Play className="w-3 h-3" /> Audio généré
+                        </p>
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => {
+                              // Regénérer = d'abord supprimer puis regénérer le dernier
+                              deleteSceneVoice(scene.id);
+                            }}
+                            className="flex items-center gap-1 px-2 py-1 bg-[#1e1e2e] hover:bg-orange-600/20 border border-[#2a2a3e] hover:border-orange-600/30 text-gray-400 hover:text-orange-300 text-xs rounded-lg transition-all"
+                            title="Supprimer cet audio pour en générer un nouveau"
+                          >
+                            <RotateCcw className="w-3 h-3" /> Regénérer
+                          </button>
+                          <button
+                            onClick={() => deleteSceneVoice(scene.id)}
+                            className="flex items-center gap-1 px-2 py-1 bg-[#1e1e2e] hover:bg-red-600/20 border border-[#2a2a3e] hover:border-red-600/30 text-gray-400 hover:text-red-400 text-xs rounded-lg transition-all"
+                            title="Supprimer cet audio"
+                          >
+                            <Trash2 className="w-3 h-3" /> Supprimer
+                          </button>
+                        </div>
+                      </div>
                       <div className="flex items-center gap-3 p-3 bg-green-900/10 border border-green-600/20 rounded-xl">
                         <PlayButton url={scene.voiceUrl} id={`scene-audio-${scene.id}`} size="md" />
                         <audio controls src={scene.voiceUrl} className="flex-1 h-8" />
