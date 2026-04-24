@@ -219,13 +219,33 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
       }
 
       const output = await replicate.run(generator.replicateModel as `${string}/${string}`, { input: replicateInput });
+      // Replicate can return: string, string[], object with toString(), or ReadableStream
       if (Array.isArray(output) && output.length > 0) {
-        imageUrl = typeof output[0] === "string" ? output[0] : String(output[0]);
+        const first = output[0];
+        // Could be a FileOutput object with url() method or toString()
+        if (typeof first === "string") {
+          imageUrl = first;
+        } else if (first && typeof (first as { url?: () => string }).url === "function") {
+          imageUrl = (first as { url: () => string }).url();
+        } else {
+          imageUrl = String(first); // toString() gives the URL
+        }
       } else if (typeof output === "string") {
         imageUrl = output;
+      } else if (output && typeof (output as { url?: () => string }).url === "function") {
+        imageUrl = (output as { url: () => string }).url();
+      } else if (output) {
+        imageUrl = String(output);
+      }
+      // Clean up: ensure it's a valid URL
+      if (imageUrl && !imageUrl.startsWith("http") && !imageUrl.startsWith("data:")) {
+        imageUrl = "";
       }
 
-    } else if (generator.provider === "Fal.ai" && process.env.FAL_API_KEY) {
+    } else if (generator.provider === "Fal.ai") {
+      const falKey = process.env.FAL_API_KEY;
+      if (!falKey) throw new Error("FAL_API_KEY manquante — ajoutez-la dans Paramètres");
+
       const falBody: Record<string, unknown> = {
         prompt: prompt.slice(0, 2000),
         image_size: format === "9:16" ? "portrait_9_16" : "landscape_16_9",
@@ -243,49 +263,76 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
 
       const falRes = await fetch(`https://fal.run/${generator.model}`, {
         method: "POST",
-        headers: { "Authorization": `Key ${process.env.FAL_API_KEY}`, "Content-Type": "application/json" },
+        headers: { "Authorization": `Key ${falKey}`, "Content-Type": "application/json" },
         body: JSON.stringify(falBody),
       });
-      if (!falRes.ok) throw new Error(`Fal.ai ${falRes.status}: ${await falRes.text()}`);
+      if (!falRes.ok) {
+        const errText = await falRes.text();
+        throw new Error(`Fal.ai erreur ${falRes.status}: ${errText.slice(0, 200)}`);
+      }
       const falData = await falRes.json();
       imageUrl = falData.images?.[0]?.url || falData.image?.url || "";
+      if (!imageUrl) throw new Error(`Fal.ai: pas d'image dans la réponse: ${JSON.stringify(falData).slice(0, 200)}`);
 
-    } else if (generator.provider === "Together.ai" && process.env.TOGETHER_API_KEY) {
+    } else if (generator.provider === "Together.ai") {
+      const togetherKey = process.env.TOGETHER_API_KEY;
+      if (!togetherKey) throw new Error("TOGETHER_API_KEY manquante — ajoutez-la dans Paramètres");
       const togetherRes = await fetch("https://api.together.xyz/v1/images/generations", {
         method: "POST",
-        headers: { "Authorization": `Bearer ${process.env.TOGETHER_API_KEY}`, "Content-Type": "application/json" },
+        headers: { "Authorization": `Bearer ${togetherKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ model: generator.model, prompt: prompt.slice(0, 2000), width, height, steps: 4, n: 1 }),
       });
-      if (!togetherRes.ok) throw new Error(`Together.ai ${togetherRes.status}`);
+      if (!togetherRes.ok) throw new Error(`Together.ai erreur ${togetherRes.status}: ${await togetherRes.text().then(t => t.slice(0, 200))}`);
       const togetherData = await togetherRes.json();
       imageUrl = togetherData.data?.[0]?.url || "";
+      if (!imageUrl) throw new Error("Together.ai: pas d'image générée");
 
-    } else if (generator.provider === "HuggingFace" && process.env.HUGGINGFACE_API_KEY) {
+    } else if (generator.provider === "HuggingFace") {
+      const hfKey = process.env.HUGGINGFACE_API_KEY;
+      if (!hfKey) throw new Error("HUGGINGFACE_API_KEY manquante — ajoutez-la dans Paramètres");
       const hfRes = await fetch(`https://api-inference.huggingface.co/models/${generator.model}`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${process.env.HUGGINGFACE_API_KEY}`, "Content-Type": "application/json" },
+        headers: { "Authorization": `Bearer ${hfKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ inputs: prompt.slice(0, 1500) }),
       });
-      if (!hfRes.ok) throw new Error(`HuggingFace ${hfRes.status}`);
+      if (!hfRes.ok) throw new Error(`HuggingFace erreur ${hfRes.status}: ${await hfRes.text().then(t => t.slice(0, 200))}`);
       const hfBuffer = Buffer.from(await (await hfRes.blob()).arrayBuffer());
       imageUrl = `data:image/jpeg;base64,${hfBuffer.toString("base64")}`;
 
-    } else if (generator.provider === "Stability AI" && process.env.STABILITY_API_KEY) {
+    } else if (generator.provider === "Stability AI") {
+      const stabKey = process.env.STABILITY_API_KEY;
+      if (!stabKey) throw new Error("STABILITY_API_KEY manquante — ajoutez-la dans Paramètres");
       const form = new FormData();
       form.append("prompt", prompt.slice(0, 2000));
       form.append("aspect_ratio", format === "9:16" ? "9:16" : "16:9");
       form.append("output_format", "webp");
       const stabRes = await fetch(`https://api.stability.ai/v2beta/${generator.model}`, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${process.env.STABILITY_API_KEY}`, "Accept": "image/*" },
+        headers: { "Authorization": `Bearer ${stabKey}`, "Accept": "image/*" },
         body: form,
       });
-      if (!stabRes.ok) throw new Error(`Stability AI ${stabRes.status}`);
+      if (!stabRes.ok) throw new Error(`Stability AI erreur ${stabRes.status}: ${await stabRes.text().then(t => t.slice(0, 200))}`);
       const stabBuffer = Buffer.from(await stabRes.arrayBuffer());
       imageUrl = `data:image/webp;base64,${stabBuffer.toString("base64")}`;
+
+    } else {
+      // Unknown provider or missing API key — fallback to DALL-E 3 if key available
+      if (process.env.OPENAI_API_KEY) {
+        const size = format === "9:16" ? "1024x1792" : "1792x1024";
+        const response = await openai.images.generate({
+          model: "dall-e-3",
+          prompt: prompt.slice(0, 4000),
+          n: 1,
+          size: size as "1024x1024" | "1024x1792" | "1792x1024",
+          quality: "standard",
+        });
+        imageUrl = (response.data ?? [])[0]?.url || "";
+      } else {
+        throw new Error(`Générateur "${generator.name}" non supporté ou clé API manquante`);
+      }
     }
 
-    if (!imageUrl) throw new Error("No image generated — check API key for " + generator.provider);
+    if (!imageUrl) throw new Error(`Aucune image générée avec ${generator.name} — vérifiez votre clé API dans Paramètres`);
 
     // Save previous image to history
     const currentScene = await prisma.scene.findUnique({ where: { id: sceneId }, select: { imageUrl: true, imageHistory: true } });
