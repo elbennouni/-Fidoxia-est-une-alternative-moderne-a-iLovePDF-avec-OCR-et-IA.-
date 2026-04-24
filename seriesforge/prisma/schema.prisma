@@ -61,16 +61,19 @@ model Environment {
 }
 
 model Episode {
-  id        String   @id @default(cuid())
-  seriesId  String
-  title     String
-  duration  Int?
-  format    String   @default("9:16")
-  status    String   @default("draft")
-  script    String?
-  createdAt DateTime @default(now())
-  series    Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
-  scenes    Scene[]
+  id                   String   @id @default(cuid())
+  seriesId             String
+  title                String
+  duration             Int?
+  format               String   @default("9:16")
+  status               String   @default("draft")
+  script               String?
+  bgMusicUrl           String?
+  bgMusicName          String?
+  bgMusicVolume        Float    @default(0.2)
+  createdAt            DateTime @default(now())
+  series               Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  scenes               Scene[]
 }
 
 model Scene {

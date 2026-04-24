@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import {
-  ArrowLeft, Volume2, Loader2, Copy, Music, Mic, Play, Pause, Sparkles,
-  ExternalLink, CheckCircle, X, Settings, Square
+  ArrowLeft, Volume2, Loader2, Copy, Music, Mic, Play, Sparkles,
+  ExternalLink, CheckCircle, X, Settings, Square, Upload, Trash2, SlidersHorizontal
 } from "lucide-react";
 import { CostBadge } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
@@ -44,6 +44,9 @@ interface Scene {
 interface Episode {
   id: string;
   title: string;
+  bgMusicUrl?: string | null;
+  bgMusicName?: string | null;
+  bgMusicVolume?: number;
   series: {
     id: string;
     title: string;
@@ -63,10 +66,19 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   const [loadingVoices, setLoadingVoices] = useState(true);
   const [generatingVoice, setGeneratingVoice] = useState<string | null>(null);
   const [showVoicePicker, setShowVoicePicker] = useState<{ charId: string; charName: string; isNarrator?: boolean } | null>(null);
-  const [voiceFilter, setVoiceFilter] = useState("fr"); // Default to French
+  const [voiceFilter, setVoiceFilter] = useState("fr");
   const [characters, setCharacters] = useState<Character[]>([]);
   const [narratorVoiceId, setNarratorVoiceId] = useState<string>("");
   const [narratorVoiceName, setNarratorVoiceName] = useState<string>("");
+  // Background music state
+  const [bgMusicUrl, setBgMusicUrl] = useState<string | null>(null);
+  const [bgMusicName, setBgMusicName] = useState<string | null>(null);
+  const [bgMusicVolume, setBgMusicVolume] = useState<number>(0.2);
+  const [uploadingMusic, setUploadingMusic] = useState(false);
+  const [savingVolume, setSavingVolume] = useState(false);
+  const musicInputRef = useRef<HTMLInputElement>(null);
+  const bgAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [playingBg, setPlayingBg] = useState(false);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -79,6 +91,9 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
       const data = await res.json();
       setEpisode(data);
       setCharacters(data.series?.characters || []);
+      if (data.bgMusicUrl) setBgMusicUrl(data.bgMusicUrl);
+      if (data.bgMusicName) setBgMusicName(data.bgMusicName);
+      if (data.bgMusicVolume !== undefined) setBgMusicVolume(data.bgMusicVolume);
     } finally { setLoading(false); }
   }
 
@@ -112,6 +127,78 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
       setShowVoicePicker(null);
       fetchData();
     } catch { toast.error("Erreur assignation"); }
+  }
+
+  async function handleMusicUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingMusic(true);
+    const t = toast.loading(`Upload "${file.name}"...`);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("volume", String(bgMusicVolume));
+      const res = await fetch(`/api/episodes/${id}/bg-music`, { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setBgMusicUrl(data.bgMusicUrl);
+      setBgMusicName(data.bgMusicName);
+      toast.dismiss(t);
+      toast.success(`Musique "${file.name}" ajoutée !`);
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Upload échoué");
+    } finally {
+      setUploadingMusic(false);
+      if (musicInputRef.current) musicInputRef.current.value = "";
+    }
+  }
+
+  async function handleVolumeChange(newVolume: number) {
+    setBgMusicVolume(newVolume);
+    // Update bg audio volume in real-time
+    if (bgAudioRef.current) bgAudioRef.current.volume = newVolume;
+  }
+
+  async function saveVolume() {
+    setSavingVolume(true);
+    try {
+      await fetch(`/api/episodes/${id}/bg-music`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ volume: bgMusicVolume }),
+      });
+      toast.success("Volume sauvegardé !");
+    } finally { setSavingVolume(false); }
+  }
+
+  async function removeMusic() {
+    await fetch(`/api/episodes/${id}/bg-music`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ remove: true }),
+    });
+    setBgMusicUrl(null);
+    setBgMusicName(null);
+    setPlayingBg(false);
+    if (bgAudioRef.current) { bgAudioRef.current.pause(); bgAudioRef.current = null; }
+    toast.success("Musique supprimée");
+  }
+
+  function toggleBgMusic() {
+    if (!bgMusicUrl) return;
+    if (playingBg && bgAudioRef.current) {
+      bgAudioRef.current.pause();
+      setPlayingBg(false);
+    } else {
+      const audio = new Audio(bgMusicUrl);
+      audio.volume = bgMusicVolume;
+      audio.loop = true;
+      audio.play();
+      bgAudioRef.current = audio;
+      setPlayingBg(true);
+      audio.onended = () => setPlayingBg(false);
+    }
   }
 
   async function generateNarratorVoice(scene: Scene, text: string) {
@@ -312,6 +399,110 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
           </div>
         </div>
       )}
+
+      {/* Background Music */}
+      <input ref={musicInputRef} type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.aac" className="hidden" onChange={handleMusicUpload} />
+
+      <div className="mb-6 bg-[#13131a] border border-[#2a2a3e] rounded-xl p-5">
+        <h2 className="font-bold text-white mb-4 flex items-center gap-2">
+          <Music className="w-5 h-5 text-purple-400" /> Musique de fond
+        </h2>
+
+        {bgMusicUrl ? (
+          <div className="space-y-4">
+            {/* Music info + controls */}
+            <div className="flex items-center gap-3 p-3 bg-purple-900/10 border border-purple-600/30 rounded-xl">
+              <div className="p-2 bg-purple-600/20 rounded-lg flex-shrink-0">
+                <Music className="w-5 h-5 text-purple-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-white truncate">{bgMusicName}</p>
+                <p className="text-xs text-gray-400">Volume: {Math.round(bgMusicVolume * 100)}%</p>
+              </div>
+              <button
+                onClick={toggleBgMusic}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${playingBg ? "bg-red-600/20 border border-red-600/30 text-red-300" : "bg-green-600/20 border border-green-600/30 text-green-300"}`}
+              >
+                {playingBg ? <><Square className="w-3 h-3 fill-current" /> Stop</> : <><Play className="w-3 h-3 fill-current" /> Écouter</>}
+              </button>
+              <button onClick={removeMusic} className="p-1.5 bg-red-600/0 hover:bg-red-600/20 text-gray-500 hover:text-red-400 rounded-lg transition-all">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Volume Slider */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm text-gray-300 flex items-center gap-2">
+                  <SlidersHorizontal className="w-4 h-4 text-purple-400" />
+                  Volume musique de fond
+                  <span className="text-xs text-gray-500">(garde les voix audibles)</span>
+                </label>
+                <span className="text-sm font-mono text-purple-300">{Math.round(bgMusicVolume * 100)}%</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-500">0%</span>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  value={bgMusicVolume}
+                  onChange={e => handleVolumeChange(parseFloat(e.target.value))}
+                  className="flex-1 h-2 appearance-none bg-[#2a2a3e] rounded-full cursor-pointer accent-purple-500"
+                />
+                <span className="text-xs text-gray-500">100%</span>
+              </div>
+              {/* Visual guide */}
+              <div className="flex gap-2 text-xs">
+                {[
+                  { label: "Recommandé", range: "15-30%", active: bgMusicVolume >= 0.15 && bgMusicVolume <= 0.30 },
+                  { label: "Discret", range: "5-15%", active: bgMusicVolume < 0.15 },
+                  { label: "Fort", range: "30%+", active: bgMusicVolume > 0.30 },
+                ].map(({ label, range, active }) => (
+                  <span key={label} className={`px-2 py-0.5 rounded-full border ${active ? "bg-purple-600/20 border-purple-600/30 text-purple-300" : "bg-[#1e1e2e] border-[#2a2a3e] text-gray-500"}`}>
+                    {label} ({range})
+                  </span>
+                ))}
+              </div>
+              <button
+                onClick={saveVolume}
+                disabled={savingVolume}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-600/30 text-purple-300 text-sm rounded-xl transition-all disabled:opacity-50"
+              >
+                {savingVolume ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                Sauvegarder le volume
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center py-6 border border-dashed border-[#2a2a3e] rounded-xl">
+            <Music className="w-10 h-10 text-gray-600 mx-auto mb-3" />
+            <p className="text-gray-400 text-sm mb-1">Ajoutez une musique de fond à votre épisode</p>
+            <p className="text-gray-500 text-xs mb-4">MP3, WAV, OGG, M4A — le volume sera ajusté pour ne pas étouffer les voix</p>
+            <button
+              onClick={() => musicInputRef.current?.click()}
+              disabled={uploadingMusic}
+              className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all mx-auto"
+            >
+              {uploadingMusic ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+              {uploadingMusic ? "Upload..." : "Uploader une musique"}
+            </button>
+          </div>
+        )}
+
+        {/* Quick replace button if music exists */}
+        {bgMusicUrl && (
+          <button
+            onClick={() => musicInputRef.current?.click()}
+            disabled={uploadingMusic}
+            className="mt-3 flex items-center gap-2 px-3 py-1.5 bg-[#1e1e2e] hover:bg-[#2a2a3e] border border-[#2a2a3e] text-gray-400 hover:text-white text-xs rounded-lg transition-all disabled:opacity-50"
+          >
+            {uploadingMusic ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+            Remplacer la musique
+          </button>
+        )}
+      </div>
 
       {/* Characters Voice Assignment */}
       <div className="mb-6 bg-[#13131a] border border-[#2a2a3e] rounded-xl p-5">

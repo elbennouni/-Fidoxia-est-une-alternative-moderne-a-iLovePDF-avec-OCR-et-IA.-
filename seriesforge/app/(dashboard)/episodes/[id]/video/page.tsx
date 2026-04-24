@@ -4,7 +4,7 @@ import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { ArrowLeft, Video, Loader2, Copy, ExternalLink } from "lucide-react";
+import { ArrowLeft, Video, Loader2, Copy, ExternalLink, Music, SlidersHorizontal } from "lucide-react";
 import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
 
@@ -20,10 +20,22 @@ interface Scene {
   status: string;
 }
 
+interface EpisodeWithMusic {
+  id: string;
+  title: string;
+  format: string;
+  status: string;
+  bgMusicUrl?: string | null;
+  bgMusicName?: string | null;
+  bgMusicVolume?: number;
+  scenes: Scene[];
+}
+
 export default function VideoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const router = useRouter();
   const [scenes, setScenes] = useState<Scene[]>([]);
+  const [episode, setEpisode] = useState<EpisodeWithMusic | null>(null);
   const [episodeTitle, setEpisodeTitle] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -35,6 +47,7 @@ export default function VideoPage({ params }: { params: Promise<{ id: string }> 
       if (res.status === 401) { router.push("/login"); return; }
       const data = await res.json();
       setEpisodeTitle(data.title);
+      setEpisode(data);
       setScenes(data.scenes || []);
     } finally {
       setLoading(false);
@@ -77,6 +90,36 @@ export default function VideoPage({ params }: { params: Promise<{ id: string }> 
           </a>
         ))}
       </div>
+
+      {/* Background Music Status */}
+      {episode && (
+        <div className={`mb-6 p-4 rounded-xl border flex items-center gap-4 ${episode.bgMusicUrl ? "bg-purple-900/10 border-purple-600/30" : "bg-[#13131a] border-[#2a2a3e]"}`}>
+          <div className={`p-2 rounded-lg ${episode.bgMusicUrl ? "bg-purple-600/20" : "bg-[#1e1e2e]"}`}>
+            <Music className={`w-5 h-5 ${episode.bgMusicUrl ? "text-purple-400" : "text-gray-600"}`} />
+          </div>
+          <div className="flex-1">
+            {episode.bgMusicUrl ? (
+              <>
+                <p className="text-sm font-medium text-white flex items-center gap-2">
+                  ✅ Musique de fond : {episode.bgMusicName}
+                  <span className="text-xs text-purple-300 font-mono">volume {Math.round((episode.bgMusicVolume ?? 0.2) * 100)}%</span>
+                </p>
+                <p className="text-xs text-gray-400 mt-0.5">La musique sera mixée avec les voix lors de l'assemblage final</p>
+                <audio controls src={episode.bgMusicUrl} className="h-7 mt-1 w-48" />
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-gray-400">Aucune musique de fond</p>
+                <p className="text-xs text-gray-500">Ajoutez une musique dans l'onglet Audio avant de générer la vidéo</p>
+              </>
+            )}
+          </div>
+          <Link href={`/episodes/${id}/audio`} className="flex items-center gap-1.5 px-3 py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-600/30 text-purple-300 text-xs rounded-xl transition-all whitespace-nowrap">
+            <SlidersHorizontal className="w-3.5 h-3.5" />
+            {episode.bgMusicUrl ? "Modifier le volume" : "Ajouter musique"}
+          </Link>
+        </div>
+      )}
 
       {scenes.length > 0 && (
         <div className="mb-4 flex items-center justify-between">
