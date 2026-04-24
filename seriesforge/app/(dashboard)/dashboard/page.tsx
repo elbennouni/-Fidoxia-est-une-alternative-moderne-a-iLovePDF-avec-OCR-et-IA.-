@@ -23,21 +23,21 @@ export default function DashboardPage() {
   const [restoreLoading, setRestoreLoading] = useState(false);
 
   useEffect(() => {
-    fetchSeries();
-  }, []);
-
-  async function fetchSeries() {
-    try {
-      const res = await fetch("/api/series/create");
-      if (res.status === 401) { router.push("/login"); return; }
-      const data = await res.json();
-      setSeries(Array.isArray(data) ? data : []);
-    } catch {
-      toast.error("Erreur chargement des séries");
-    } finally {
-      setLoading(false);
-    }
-  }
+    let alive = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/series/create");
+        if (res.status === 401) { router.push("/login"); return; }
+        const data = await res.json();
+        if (alive) setSeries(Array.isArray(data) ? data : []);
+      } catch {
+        toast.error("Erreur chargement des séries");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [router]);
 
   async function restoreConfiguredKonanta() {
     setRestoreLoading(true);
@@ -67,7 +67,7 @@ export default function DashboardPage() {
         <h1 className="text-4xl font-bold text-white mb-2">
           Bienvenue sur <span className="gradient-text">SeriesForge AI</span>
         </h1>
-        <p className="text-gray-400 text-lg">Créez des séries animées avec l'intelligence multi-agents</p>
+        <p className="text-gray-400 text-lg">Créez des séries animées avec l&apos;intelligence multi-agents</p>
       </div>
 
       {/* Stats */}
@@ -146,7 +146,7 @@ export default function DashboardPage() {
       ) : series.length === 0 ? (
         <div className="text-center py-16 bg-[#13131a] border border-[#2a2a3e] border-dashed rounded-2xl">
           <Film className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-400 text-lg mb-2">Aucune série pour l'instant</p>
+          <p className="text-gray-400 text-lg mb-2">Aucune série pour l&apos;instant</p>
           <p className="text-gray-500 text-sm mb-6">Créez votre première série ou restaurez le setup Konanta préconfiguré</p>
           <Link href="/series" className="inline-flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-all">
             <Plus className="w-4 h-4" /> Créer une Série
