@@ -7,7 +7,7 @@ import toast from "react-hot-toast";
 import {
   ArrowLeft, Video, Loader2, Copy, ExternalLink, Music, SlidersHorizontal,
   Play, Square, Download, Sparkles, CheckCircle, Clock, ChevronDown,
-  Volume2, Mic, Image, Zap, AlertCircle
+  Volume2, Mic, Image, Zap, AlertCircle, Film
 } from "lucide-react";
 import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
@@ -463,25 +463,34 @@ export default function VideoPage({ params }: { params: Promise<{ id: string }> 
         </div>
       )}
 
-      {/* Download All */}
-      {scenesWithVideo > 0 && (
-        <div className="mt-6 p-4 bg-green-900/10 border border-green-600/20 rounded-xl flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <p className="text-green-300 font-semibold">{scenesWithVideo} vidéos prêtes sur {episode.scenes.length}</p>
-            <p className="text-xs text-gray-400 mt-0.5">Téléchargez chaque scène individuellement ou copiez les URLs</p>
-          </div>
-          <div className="flex gap-2">
-            {episode.bgMusicUrl && (
-              <span className="flex items-center gap-1 px-3 py-2 bg-purple-600/20 border border-purple-600/30 rounded-xl text-purple-300 text-xs">
-                <Music className="w-3.5 h-3.5" /> Musique: {Math.round((episode.bgMusicVolume ?? 0.2) * 100)}% vol.
-              </span>
-            )}
-            <Link href={`/episodes/${id}/editor`} className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium rounded-xl transition-all">
-              <Download className="w-4 h-4" /> Export JSON complet
-            </Link>
+      {/* Assemble CTA */}
+      <div className={`mt-6 p-5 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${scenesWithVideo > 0 || episode.scenes.some(s => s.imageUrl) ? "bg-purple-900/20 border-purple-600/30" : "bg-[#13131a] border-[#2a2a3e]"}`}>
+        <div>
+          <h3 className="font-bold text-white text-lg flex items-center gap-2">
+            <Film className="w-5 h-5 text-purple-400" /> Assembler l'épisode final
+          </h3>
+          <p className="text-gray-400 text-sm mt-1">
+            FFmpeg assemble toutes les scènes + voix HeyGen + musique de fond → un seul MP4 prêt à publier
+          </p>
+          <div className="flex gap-3 mt-2 text-xs">
+            <span className={scenesWithVideo > 0 || episode.scenes.some(s => s.imageUrl) ? "text-green-400" : "text-gray-600"}>
+              ✓ {scenesWithVideo} vidéos + {episode.scenes.filter(s => s.imageUrl && !s.videoUrl).length} images
+            </span>
+            <span className={episode.scenes.some(s => s.voiceUrl) ? "text-orange-400" : "text-gray-600"}>
+              {episode.scenes.some(s => s.voiceUrl) ? `✓ ${episode.scenes.filter(s => s.voiceUrl).length} voix` : "○ Pas de voix"}
+            </span>
+            <span className={episode.bgMusicUrl ? "text-purple-400" : "text-gray-600"}>
+              {episode.bgMusicUrl ? `✓ Musique (${Math.round((episode.bgMusicVolume ?? 0.2) * 100)}%)` : "○ Pas de musique"}
+            </span>
           </div>
         </div>
-      )}
+        <Link
+          href={`/episodes/${id}/assemble`}
+          className="flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl transition-all whitespace-nowrap glow-purple"
+        >
+          <Film className="w-5 h-5" /> Assembler &amp; Télécharger
+        </Link>
+      </div>
     </div>
   );
 }

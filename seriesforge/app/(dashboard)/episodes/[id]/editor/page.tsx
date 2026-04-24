@@ -6,7 +6,7 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Zap, Download, Loader2, Sparkles, CheckCircle,
-  Clock, AlertCircle, Image, Volume2, Video, ChevronDown, ChevronUp, Copy, FileJson, X
+  Clock, AlertCircle, Image, Volume2, Video, ChevronDown, ChevronUp, Copy, FileJson, X, Film
 } from "lucide-react";
 import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
@@ -449,6 +449,9 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
                   </div>
                   <Link href={`/episodes/${id}/storyboard`} className="flex items-center gap-2 px-4 py-2.5 bg-[#1e1e2e] border border-[#2a2a3e] hover:border-blue-500/50 text-gray-300 text-sm rounded-xl transition-all">
                     <Image className="w-4 h-4" /> Storyboard
+                  </Link>
+                  <Link href={`/episodes/${id}/assemble`} className="flex items-center gap-2 px-4 py-2.5 bg-purple-600/20 border border-purple-600/30 hover:bg-purple-600/40 text-purple-300 text-sm font-medium rounded-xl transition-all">
+                    <Film className="w-4 h-4" /> Assembler
                   </Link>
                   <Link href={`/episodes/${id}/audio`} className="flex items-center gap-2 px-4 py-2.5 bg-[#1e1e2e] border border-[#2a2a3e] hover:border-orange-500/50 text-gray-300 text-sm rounded-xl transition-all">
                     <Volume2 className="w-4 h-4" /> Audio
