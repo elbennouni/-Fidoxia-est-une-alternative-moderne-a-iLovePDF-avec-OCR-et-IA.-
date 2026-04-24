@@ -591,6 +591,34 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
       </div>
 
       {/* Scenes Audio */}
+      {episode.scenes.length > 0 && (
+        <div className="mb-4 flex items-center justify-between gap-3 p-3 bg-blue-900/10 border border-blue-600/20 rounded-xl">
+          <div>
+            <p className="text-sm text-blue-200 font-medium">🇫🇷 Dialogues en anglais ?</p>
+            <p className="text-xs text-gray-400">Traduis tous les textes en français avant de générer les voix</p>
+          </div>
+          <button
+            onClick={async () => {
+              const t = toast.loading("🇫🇷 Traduction en cours...");
+              try {
+                const res = await fetch(`/api/episodes/${id}/translate-to-french`, { method: "POST" });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error);
+                toast.dismiss(t);
+                toast.success(`✅ ${data.translated} scènes traduites ! Vous pouvez maintenant générer les voix.`, { duration: 6000 });
+                fetchData();
+              } catch (err) {
+                toast.dismiss(t);
+                toast.error(err instanceof Error ? err.message : "Erreur traduction");
+              }
+            }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-xl transition-all whitespace-nowrap"
+          >
+            🇫🇷 Traduire en français
+          </button>
+        </div>
+      )}
+
       {episode.scenes.length === 0 ? (
         <div className="text-center py-16 bg-[#13131a] border border-dashed border-[#2a2a3e] rounded-2xl">
           <Volume2 className="w-12 h-12 text-gray-600 mx-auto mb-4" />

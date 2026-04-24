@@ -194,6 +194,22 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  async function translateToFrench() {
+    if (!episode?.scenes.length) return;
+    const t = toast.loading("🇫🇷 Traduction de toutes les scènes en français...");
+    try {
+      const res = await fetch(`/api/episodes/${id}/translate-to-french`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.dismiss(t);
+      toast.success(`✅ ${data.translated}/${data.total} scènes traduites ! Audios réinitialisés.`, { duration: 6000 });
+      fetchEpisode();
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Traduction échouée");
+    }
+  }
+
   async function generateAllConsistent() {
     setGeneratingAllImages(true);
     const sceneCount = episode?.scenes.length || 8;
@@ -413,6 +429,13 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
               </div>
               {episode.scenes.length > 0 && (
                 <>
+                  <button
+                    onClick={translateToFrench}
+                    className="flex items-center gap-2 px-4 py-2.5 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-600/30 text-blue-300 text-sm font-medium rounded-xl transition-all"
+                    title="Traduit toutes les scènes en français et réinitialise les audios pour regénérer"
+                  >
+                    🇫🇷 Traduire en français
+                  </button>
                   <div className="flex flex-col items-end gap-1">
                     <button
                       onClick={generateAllConsistent}
