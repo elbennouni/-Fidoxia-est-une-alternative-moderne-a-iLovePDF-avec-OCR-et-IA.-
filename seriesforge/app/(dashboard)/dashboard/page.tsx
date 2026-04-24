@@ -20,7 +20,7 @@ export default function DashboardPage() {
   const router = useRouter();
   const [series, setSeries] = useState<Series[]>([]);
   const [loading, setLoading] = useState(true);
-  const [demoLoading, setDemoLoading] = useState(false);
+  const [starterLoading, setStarterLoading] = useState(false);
 
   useEffect(() => {
     fetchSeries();
@@ -39,21 +39,23 @@ export default function DashboardPage() {
     }
   }
 
-  async function generateKonantaDemo() {
-    setDemoLoading(true);
-    const t = toast.loading("🎬 Running full AI pipeline... This takes 2-3 minutes", { duration: 180000 });
+  async function restoreKonantaStarter() {
+    setStarterLoading(true);
+    const t = toast.loading("Restauration du pack configure Konanta...");
     try {
       const res = await fetch("/api/demo/konanta", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.dismiss(t);
-      toast.success(`✅ Demo created! ${data.sceneCount} scenes, avg score: ${data.averageQualityScore}/100`);
+      toast.success(
+        `Pack restaure : ${data.characterCount} personnages, ${data.sceneCount} scenes et 1 episode preconfigure.`
+      );
       router.push(`/series/${data.seriesId}`);
     } catch (err) {
       toast.dismiss(t);
-      toast.error(err instanceof Error ? err.message : "Demo failed");
+      toast.error(err instanceof Error ? err.message : "Restauration impossible");
     } finally {
-      setDemoLoading(false);
+      setStarterLoading(false);
     }
   }
 
@@ -95,30 +97,30 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Konanta Demo Banner */}
+      {/* Konanta Starter Banner */}
       <div className="mb-8 relative overflow-hidden bg-gradient-to-r from-purple-900/40 via-blue-900/30 to-purple-900/40 border border-purple-500/30 rounded-2xl p-6">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 to-blue-600/10" />
         <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Zap className="w-5 h-5 text-yellow-400" />
-              <span className="text-yellow-400 font-semibold text-sm">DEMO</span>
+              <span className="text-yellow-400 font-semibold text-sm">STARTER</span>
             </div>
-            <h2 className="text-xl font-bold text-white">Générer le Démo Konanta</h2>
+            <h2 className="text-xl font-bold text-white">Remettre mes personnages et mon episode configures</h2>
             <p className="text-gray-300 text-sm mt-1">
-              Pipeline complet : 5 personnages · 8 scènes · narration · storyboard · plan audio · contrôle qualité
+              Restaure instantanement une serie prete a utiliser : 5 personnages, 3 decors, 1 episode et 8 scenes deja remplies
             </p>
-            <p className="text-gray-400 text-xs mt-1">Series: &quot;Les Marseillais à Konanta&quot; — Pixar 3D Reality TV</p>
+            <p className="text-gray-400 text-xs mt-1">Serie : &quot;Les Marseillais a Konanta&quot; - casting et episode deja configures</p>
           </div>
           <button
-            onClick={generateKonantaDemo}
-            disabled={demoLoading}
+            onClick={restoreKonantaStarter}
+            disabled={starterLoading}
             className="flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all duration-200 whitespace-nowrap glow-purple"
           >
-            {demoLoading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Génération...</>
+            {starterLoading ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Restauration...</>
             ) : (
-              <><Sparkles className="w-4 h-4" /> Générer le Démo</>
+              <><Sparkles className="w-4 h-4" /> Restaurer maintenant</>
             )}
           </button>
         </div>
@@ -143,10 +145,20 @@ export default function DashboardPage() {
         <div className="text-center py-16 bg-[#13131a] border border-[#2a2a3e] border-dashed rounded-2xl">
           <Film className="w-12 h-12 text-gray-600 mx-auto mb-4" />
           <p className="text-gray-400 text-lg mb-2">Aucune série pour l'instant</p>
-          <p className="text-gray-500 text-sm mb-6">Créez votre première série ou essayez le démo Konanta</p>
-          <Link href="/series" className="inline-flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-all">
-            <Plus className="w-4 h-4" /> Créer une Série
-          </Link>
+          <p className="text-gray-500 text-sm mb-6">Creez une serie vide ou restaurez directement un pack deja configure.</p>
+          <div className="flex justify-center gap-3 flex-wrap">
+            <Link href="/series" className="inline-flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-all">
+              <Plus className="w-4 h-4" /> Creer une Serie
+            </Link>
+            <button
+              onClick={restoreKonantaStarter}
+              disabled={starterLoading}
+              className="inline-flex items-center gap-2 px-6 py-3 bg-white/5 border border-purple-500/30 hover:bg-white/10 disabled:opacity-50 text-white font-medium rounded-xl transition-all"
+            >
+              {starterLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+              Restaurer le pack configure
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

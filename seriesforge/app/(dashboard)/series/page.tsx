@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { Plus, Tv2, ArrowRight, Loader2, X, Trash2, AlertTriangle, Palette } from "lucide-react";
+import { Plus, Tv2, ArrowRight, Loader2, X, Trash2, AlertTriangle, Palette, Sparkles } from "lucide-react";
 import { VISUAL_STYLE_PRESETS } from "@/lib/visualStyles";
 
 interface Series {
@@ -31,6 +31,7 @@ export default function SeriesPage() {
   const [series, setSeries] = useState<Series[]>([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [restoringStarter, setRestoringStarter] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -92,16 +93,63 @@ export default function SeriesPage() {
     } finally { setDeleting(false); }
   }
 
+  async function restoreKonantaStarter() {
+    setRestoringStarter(true);
+    const t = toast.loading("Restauration de la serie avec personnages et episode preconfigures...");
+    try {
+      const res = await fetch("/api/demo/konanta", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.dismiss(t);
+      toast.success(`Serie restauree: ${data.characterCount} personnages et ${data.sceneCount} scenes deja configures.`);
+      router.push(`/series/${data.seriesId}`);
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Restauration impossible");
+    } finally {
+      setRestoringStarter(false);
+    }
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between gap-3 mb-8 flex-wrap">
         <div>
           <h1 className="text-3xl font-bold text-white">Mes Séries</h1>
           <p className="text-gray-400 mt-1">Gérez vos projets de séries animées</p>
         </div>
-        <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-all">
-          <Plus className="w-4 h-4" /> Nouvelle Série
-        </button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={restoreKonantaStarter}
+            disabled={restoringStarter}
+            className="flex items-center gap-2 px-5 py-2.5 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-600/30 disabled:opacity-50 text-orange-300 font-medium rounded-xl transition-all"
+          >
+            {restoringStarter ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            Remettre mes personnages
+          </button>
+          <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-all">
+            <Plus className="w-4 h-4" /> Nouvelle Série
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-6 bg-gradient-to-r from-orange-900/30 via-purple-900/20 to-orange-900/30 border border-orange-500/20 rounded-2xl p-5">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <p className="text-sm font-semibold text-orange-300 mb-1">Starter restaure en un clic</p>
+            <p className="text-sm text-gray-300">
+              Recrée automatiquement une serie avec les personnages, les decors et un episode deja configure.
+            </p>
+          </div>
+          <button
+            onClick={restoreKonantaStarter}
+            disabled={restoringStarter}
+            className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all"
+          >
+            {restoringStarter ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+            Restaurer le starter
+          </button>
+        </div>
       </div>
 
       {/* Delete Confirm Modal */}
@@ -184,9 +232,19 @@ export default function SeriesPage() {
         <div className="text-center py-16 bg-[#13131a] border border-dashed border-[#2a2a3e] rounded-2xl">
           <Tv2 className="w-12 h-12 text-gray-600 mx-auto mb-4" />
           <p className="text-gray-400 mb-4">Aucune série. Créez votre première !</p>
-          <button onClick={() => setShowForm(true)} className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-all">
-            <Plus className="w-4 h-4 inline mr-2" /> Nouvelle Série
-          </button>
+          <div className="flex items-center justify-center gap-3 flex-wrap">
+            <button
+              onClick={restoreKonantaStarter}
+              disabled={restoringStarter}
+              className="px-6 py-3 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all"
+            >
+              {restoringStarter ? <Loader2 className="w-4 h-4 inline mr-2 animate-spin" /> : <Sparkles className="w-4 h-4 inline mr-2" />}
+              Restaurer le starter
+            </button>
+            <button onClick={() => setShowForm(true)} className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-all">
+              <Plus className="w-4 h-4 inline mr-2" /> Nouvelle Série
+            </button>
+          </div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
