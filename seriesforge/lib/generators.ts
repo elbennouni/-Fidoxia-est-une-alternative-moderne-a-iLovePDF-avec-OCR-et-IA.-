@@ -32,6 +32,38 @@ export interface VideoGenerator {
 
 export const IMAGE_GENERATORS: ImageGenerator[] = [
   {
+    id: "nano-banana-pro",
+    name: "Nano Banana Pro 🍌",
+    provider: "NanoPhoto.ai",
+    model: "nano-banana-pro",
+    description: "Google Imagen 3 — 95%+ cohérence personnage, jusqu'à 8 photos de référence",
+    pricePerImage: 0.15,
+    quality: "ultra",
+    speed: "medium",
+    supportsImgToImg: true,
+    supportsReference: true,
+    style: "any",
+    free: false,
+    badge: "95% Cohérence",
+    apiKey: "NANOBANA_API_KEY",
+  },
+  {
+    id: "nano-banana",
+    name: "Nano Banana 🍌",
+    provider: "NanoPhoto.ai",
+    model: "nano-banana",
+    description: "Google Imagen 3.1 Flash — rapide, 14 refs max, meilleur rapport qualité/prix",
+    pricePerImage: 0.10,
+    quality: "high",
+    speed: "fast",
+    supportsImgToImg: true,
+    supportsReference: true,
+    style: "any",
+    free: false,
+    badge: "14 refs",
+    apiKey: "NANOBANA_API_KEY",
+  },
+  {
     id: "ideogram-character",
     name: "Ideogram Character ⭐",
     provider: "Fal.ai",
@@ -418,9 +450,9 @@ export const VIDEO_GENERATORS: VideoGenerator[] = [
 
 export function getDefaultImageGenerator(): string {
   if (typeof window !== "undefined") {
-    return localStorage.getItem("sf_default_img_gen") || "ideogram-character";
+    return localStorage.getItem("sf_default_img_gen") || "nano-banana-pro";
   }
-  return "ideogram-character";
+  return "nano-banana-pro";
 }
 
 export function setDefaultImageGenerator(id: string) {

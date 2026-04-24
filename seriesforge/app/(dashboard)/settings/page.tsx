@@ -62,6 +62,14 @@ const API_KEYS = [
     link: "https://app.heygen.com/settings?nav=API",
     required: false,
   },
+  {
+    key: "NANOBANA_API_KEY",
+    label: "Nano Banana 🍌",
+    description: "Google Imagen 3 — 95%+ cohérence personnage, jusqu'à 8 photos de référence",
+    placeholder: "...",
+    link: "https://nanophoto.ai/settings",
+    required: false,
+  },
 ];
 
 export default function SettingsPage() {

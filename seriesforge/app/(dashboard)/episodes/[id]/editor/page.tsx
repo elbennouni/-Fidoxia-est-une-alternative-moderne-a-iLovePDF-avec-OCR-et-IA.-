@@ -151,7 +151,8 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
     toast.success(`${VIDEO_GENERATORS.find(g => g.id === id)?.name} défini par défaut`);
   }
 
-  // Models that use the dedicated character-consistent API
+  // Models that use dedicated APIs for character reference
+  const NANO_BANANA_MODELS = ["nano-banana-pro", "nano-banana"];
   const CHARACTER_CONSISTENT_MODELS = ["ideogram-character", "instant-character", "minimax-subject"];
 
   async function generateSceneImage(scene: Scene) {
@@ -159,20 +160,22 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
     const gen = IMAGE_GENERATORS.find(g => g.id === selectedImgGen);
     const t = toast.loading(`Génération scène ${scene.sceneNumber} avec ${gen?.name || "DALL-E 3"}...`);
     try {
-      // Use the character-consistent API for models that support reference images properly
-      const isCharacterModel = CHARACTER_CONSISTENT_MODELS.includes(selectedImgGen);
-      const endpoint = isCharacterModel
-        ? "/api/generate/scene-character-consistent"
-        : "/api/generate/scene-with-generator";
+      // Route to the right API based on the generator
+      let endpoint = "/api/generate/scene-with-generator";
+      let body: Record<string, unknown> = { sceneId: scene.id, generatorId: selectedImgGen };
+
+      if (NANO_BANANA_MODELS.includes(selectedImgGen)) {
+        endpoint = "/api/generate/nano-banana";
+        body = { sceneId: scene.id, model: selectedImgGen };
+      } else if (CHARACTER_CONSISTENT_MODELS.includes(selectedImgGen)) {
+        endpoint = "/api/generate/scene-character-consistent";
+        body = { sceneId: scene.id, model: selectedImgGen };
+      }
 
       const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sceneId: scene.id,
-          generatorId: selectedImgGen,
-          model: selectedImgGen, // for scene-character-consistent
-        }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
