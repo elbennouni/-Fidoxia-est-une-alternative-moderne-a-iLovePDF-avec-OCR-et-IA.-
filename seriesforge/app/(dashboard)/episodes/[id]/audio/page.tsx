@@ -62,9 +62,11 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   const [voicesNote, setVoicesNote] = useState("");
   const [loadingVoices, setLoadingVoices] = useState(true);
   const [generatingVoice, setGeneratingVoice] = useState<string | null>(null);
-  const [showVoicePicker, setShowVoicePicker] = useState<{ charId: string; charName: string } | null>(null);
-  const [voiceFilter, setVoiceFilter] = useState("all");
+  const [showVoicePicker, setShowVoicePicker] = useState<{ charId: string; charName: string; isNarrator?: boolean } | null>(null);
+  const [voiceFilter, setVoiceFilter] = useState("fr"); // Default to French
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [narratorVoiceId, setNarratorVoiceId] = useState<string>("");
+  const [narratorVoiceName, setNarratorVoiceName] = useState<string>("");
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -92,6 +94,14 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   }
 
   async function assignVoiceToCharacter(charId: string, voice: HeyGenVoice) {
+    // If assigning to narrator
+    if (showVoicePicker?.isNarrator) {
+      setNarratorVoiceId(voice.voice_id);
+      setNarratorVoiceName(voice.name);
+      toast.success(`Voix narrateur "${voice.name}" assignée !`);
+      setShowVoicePicker(null);
+      return;
+    }
     try {
       await fetch(`/api/characters/${charId}`, {
         method: "PATCH",
@@ -102,6 +112,34 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
       setShowVoicePicker(null);
       fetchData();
     } catch { toast.error("Erreur assignation"); }
+  }
+
+  async function generateNarratorVoice(scene: Scene, text: string) {
+    if (!narratorVoiceId) {
+      toast.error("Assignez d'abord une voix au Narrateur (section ci-dessus)");
+      return;
+    }
+    setGeneratingVoice(`${scene.id}-Narrateur`);
+    const t = toast.loading(`Génération voix narrateur (Scène ${scene.sceneNumber})...`);
+    try {
+      const res = await fetch("/api/heygen/generate-voice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sceneId: scene.id, text, voiceId: narratorVoiceId, characterName: "Narrateur" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.dismiss(t);
+      if (data.mock) {
+        toast("Mode démo — ajoutez HEYGEN_API_KEY pour les vraies voix", { icon: "ℹ️" });
+      } else {
+        toast.success("Voix narrateur générée !");
+        fetchData();
+      }
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Erreur");
+    } finally { setGeneratingVoice(null); }
   }
 
   async function generateVoiceForScene(scene: Scene, text: string, characterName: string) {
@@ -228,9 +266,15 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
 
             {/* Filters */}
             <div className="flex gap-2 mb-4 flex-wrap">
-              {["all", "fr", "en", "male", "female"].map(f => (
-                <button key={f} onClick={() => setVoiceFilter(f)} className={`px-3 py-1.5 rounded-lg text-sm transition-all ${voiceFilter === f ? "bg-orange-600 text-white" : "bg-[#1e1e2e] border border-[#2a2a3e] text-gray-400 hover:text-white"}`}>
-                  {f === "all" ? "Toutes" : f === "fr" ? "🇫🇷 Français" : f === "en" ? "🇬🇧 English" : f === "male" ? "Homme" : "Femme"}
+              {[
+                { id: "fr", label: "🇫🇷 Français (priorité)" },
+                { id: "all", label: "Toutes les langues" },
+                { id: "en", label: "🇬🇧 English" },
+                { id: "male", label: "♂ Homme" },
+                { id: "female", label: "♀ Femme" },
+              ].map(f => (
+                <button key={f.id} onClick={() => setVoiceFilter(f.id)} className={`px-3 py-1.5 rounded-lg text-sm transition-all ${voiceFilter === f.id ? "bg-orange-600 text-white" : "bg-[#1e1e2e] border border-[#2a2a3e] text-gray-400 hover:text-white"}`}>
+                  {f.label}
                 </button>
               ))}
             </div>
@@ -274,11 +318,31 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
         <h2 className="font-bold text-white mb-4 flex items-center gap-2">
           <Mic className="w-5 h-5 text-orange-400" /> Voix des personnages
         </h2>
-        {characters.length === 0 ? (
-          <p className="text-gray-500 text-sm">Ajoutez des personnages à la série d'abord</p>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {characters.map(char => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {/* Narrator — special character */}
+            <div className={`p-3 rounded-xl border text-center transition-all ${narratorVoiceId ? "border-blue-600/40 bg-blue-900/10" : "border-dashed border-[#2a2a3e] bg-[#1e1e2e]"}`}>
+              <div className="w-12 h-12 rounded-full mx-auto mb-2 border-2 border-blue-500/40 flex items-center justify-center bg-gradient-to-br from-blue-700 to-purple-700">
+                <Mic className="w-6 h-6 text-white" />
+              </div>
+              <p className="font-semibold text-white text-sm mb-1">🎙 Narrateur</p>
+              {narratorVoiceId ? (
+                <p className="text-xs text-blue-400 mb-2 line-clamp-1">✅ {narratorVoiceName}</p>
+              ) : (
+                <p className="text-xs text-gray-500 mb-2">Voix off à assigner</p>
+              )}
+              <button
+                onClick={() => setShowVoicePicker({ charId: "narrator", charName: "Narrateur", isNarrator: true })}
+                className="w-full py-1.5 text-xs bg-blue-600/20 hover:bg-blue-600/40 border border-blue-600/30 text-blue-300 rounded-lg transition-all"
+              >
+                {narratorVoiceId ? "Changer" : "Assigner voix FR"}
+              </button>
+            </div>
+
+            {characters.length === 0 ? (
+              <div className="col-span-3 flex items-center justify-center text-gray-500 text-sm py-4">
+                Ajoutez des personnages à la série d'abord
+              </div>
+            ) : characters.map(char => (
               <div key={char.id} className={`p-3 rounded-xl border text-center transition-all ${char.heygenVoiceId ? "border-green-600/40 bg-green-900/10" : "border-[#2a2a3e] bg-[#1e1e2e]"}`}>
                 <div className="w-12 h-12 rounded-full overflow-hidden mx-auto mb-2 border-2 border-[#2a2a3e] flex items-center justify-center bg-gradient-to-br from-purple-600 to-blue-600">
                   {char.referenceImageUrl ? (
@@ -303,8 +367,7 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                 </div>
               </div>
             ))}
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Scenes Audio */}
@@ -362,13 +425,15 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                         </div>
                         <div className="flex flex-col items-end gap-1 flex-shrink-0">
                           <button
-                            onClick={() => generateVoiceForScene(scene, scene.narration!, "Narrateur")}
-                            disabled={!!generatingVoice}
-                            className="flex items-center gap-1 px-2 py-1.5 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-600/30 text-orange-300 text-xs rounded-lg transition-all"
+                            onClick={() => generateNarratorVoice(scene, scene.narration!)}
+                            disabled={!!generatingVoice || !narratorVoiceId}
+                            title={!narratorVoiceId ? "Assignez d'abord une voix au Narrateur" : "Générer la voix narrateur"}
+                            className="flex items-center gap-1 px-2 py-1.5 bg-blue-600/20 hover:bg-blue-600/40 disabled:opacity-40 disabled:cursor-not-allowed border border-blue-600/30 text-blue-300 text-xs rounded-lg transition-all"
                           >
                             {generatingVoice === `${scene.id}-Narrateur` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-                            Voix
+                            {narratorVoiceId ? "Générer" : "⚠ Assigner voix d'abord"}
                           </button>
+                          {narratorVoiceName && <p className="text-xs text-blue-400/60">🎙 {narratorVoiceName.split("—")[0]}</p>}
                           <CostBadge cost={COSTS["heygen-tts"] * Math.max(1, Math.ceil((scene.narration?.length || 100) / 1000))} label="TTS" />
                         </div>
                       </div>
