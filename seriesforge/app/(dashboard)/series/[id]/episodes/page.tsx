@@ -4,7 +4,7 @@ import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { ArrowLeft, Plus, Film, X, Loader2, ChevronRight, Trash2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Plus, Film, X, Loader2, ChevronRight, Trash2, AlertTriangle, FileJson, Zap } from "lucide-react";
 
 interface Episode {
   id: string;
@@ -95,7 +95,7 @@ export default function EpisodesPage({ params }: { params: Promise<{ id: string 
             <p className="text-gray-400 mt-1">{series?.title}</p>
           </div>
           <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-all">
-            <Plus className="w-4 h-4" /> New Episode
+            <Plus className="w-4 h-4" /> Nouvel épisode
           </button>
         </div>
       </div>
@@ -121,17 +121,17 @@ export default function EpisodesPage({ params }: { params: Promise<{ id: string 
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-[#13131a] border border-[#2a2a3e] rounded-2xl w-full max-w-lg p-6">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-white">New Episode</h2>
+              <h2 className="text-xl font-bold text-white">Nouvel épisode</h2>
               <button onClick={() => setShowForm(false)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
             </div>
             <form onSubmit={handleCreate} className="space-y-4">
               <div>
-                <label className="block text-sm text-gray-300 mb-1">Episode Title *</label>
-                <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g. The Beach Challenge" required className="w-full px-4 py-3 bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500" />
+                <label className="block text-sm text-gray-300 mb-1">Titre de l'épisode *</label>
+                <input value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Ex: Le Défi de la Corde" required className="w-full px-4 py-3 bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500" />
               </div>
               <div>
-                <label className="block text-sm text-gray-300 mb-1">Episode Idea / Brief</label>
-                <textarea value={form.script} onChange={e => setForm({ ...form, script: e.target.value })} placeholder="Describe what happens in this episode. The AI will generate the full script..." rows={4} className="w-full px-4 py-3 bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 resize-none" />
+                <label className="block text-sm text-gray-300 mb-1">Idée / Résumé de l'épisode</label>
+                <textarea value={form.script} onChange={e => setForm({ ...form, script: e.target.value })} placeholder="Décrivez ce qui se passe dans cet épisode. L'IA générera le script complet..." rows={4} className="w-full px-4 py-3 bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 resize-none" />
               </div>
               <div>
                 <label className="block text-sm text-gray-300 mb-1">Format</label>
@@ -144,12 +144,21 @@ export default function EpisodesPage({ params }: { params: Promise<{ id: string 
                 </div>
               </div>
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setShowForm(false)} className="flex-1 py-3 border border-[#2a2a3e] text-gray-400 rounded-xl hover:border-gray-500 transition-all">Cancel</button>
+                <button type="button" onClick={() => setShowForm(false)} className="flex-1 py-3 border border-[#2a2a3e] text-gray-400 rounded-xl hover:border-gray-500 transition-all">Annuler</button>
                 <button type="submit" disabled={creating} className="flex-1 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2">
                   {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  Create & Edit
+                  Créer l'épisode
                 </button>
               </div>
+              <div className="flex items-center gap-2 pt-1">
+                <div className="flex-1 h-px bg-[#2a2a3e]" />
+                <span className="text-xs text-gray-500">ou</span>
+                <div className="flex-1 h-px bg-[#2a2a3e]" />
+              </div>
+              <p className="text-xs text-center text-gray-500">
+                Vous avez déjà un scénario JSON ?{" "}
+                <span className="text-orange-400">Créez l'épisode puis cliquez sur "Importer JSON"</span>
+              </p>
             </form>
           </div>
         </div>
@@ -160,9 +169,10 @@ export default function EpisodesPage({ params }: { params: Promise<{ id: string 
       ) : episodes.length === 0 ? (
         <div className="text-center py-16 bg-[#13131a] border border-dashed border-[#2a2a3e] rounded-2xl">
           <Film className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-400 mb-4">No episodes yet. Create your first!</p>
+          <p className="text-gray-400 mb-2 text-lg font-medium">Aucun épisode</p>
+          <p className="text-gray-500 text-sm mb-5">Créez un épisode vide puis importez votre scénario JSON, ou laissez l'IA générer automatiquement.</p>
           <button onClick={() => setShowForm(true)} className="px-6 py-3 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-all">
-            <Plus className="w-4 h-4 inline mr-2" /> Create Episode
+            <Plus className="w-4 h-4 inline mr-2" /> Créer un épisode
           </button>
         </div>
       ) : (
@@ -179,12 +189,19 @@ export default function EpisodesPage({ params }: { params: Promise<{ id: string 
                   <p className="text-xs text-gray-500 mt-0.5">{new Date(ep.createdAt).toLocaleDateString()} · {ep.format}</p>
                 </div>
               </Link>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
                 <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[ep.status] || STATUS_COLORS.draft}`}>
                   {ep.status}
                 </span>
-                <Link href={`/episodes/${ep.id}/editor`} className="p-1.5 bg-purple-600/20 hover:bg-purple-600/40 rounded-lg transition-all">
-                  <ChevronRight className="w-4 h-4 text-purple-400" />
+                <Link
+                  href={`/episodes/${ep.id}/import`}
+                  className="flex items-center gap-1 px-2 py-1.5 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-600/30 text-orange-300 text-xs font-medium rounded-lg transition-all"
+                  title="Importer un scénario JSON"
+                >
+                  <FileJson className="w-3.5 h-3.5" /> Importer JSON
+                </Link>
+                <Link href={`/episodes/${ep.id}/editor`} className="flex items-center gap-1 px-2 py-1.5 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-600/30 text-purple-300 text-xs font-medium rounded-lg transition-all">
+                  <Zap className="w-3.5 h-3.5" /> Ouvrir
                 </Link>
                 <button onClick={() => setDeleteId(ep.id)} className="p-1.5 bg-red-600/0 hover:bg-red-600/20 text-gray-600 hover:text-red-400 rounded-lg transition-all">
                   <Trash2 className="w-4 h-4" />
