@@ -131,16 +131,24 @@ export async function POST(req: NextRequest) {
         } catch {}
       }
 
-      // Priority 2: if has reference photo but no DNA → use Vision to describe
-      if (char.referenceImageUrl && generator.provider === "OpenAI") {
-        const visionDesc = await describeCharacterFromPhoto(
-          char.referenceImageUrl,
-          char.name,
-          series.visualStyle
-        );
-        if (visionDesc) {
-          charDescriptions += `\n[${char.name.toUpperCase()}] (from reference photo): ${visionDesc}. `;
+      // Priority 2: if has reference photo but no DNA
+      if (char.referenceImageUrl) {
+        if (generator.supportsImgToImg) {
+          // For img2img generators: the photo is passed as image reference (handled below)
+          // Still inject text description for prompt
+          charDescriptions += `\n[${char.name.toUpperCase()}] (photo reference used): ${char.physicalDescription}. Outfit: ${char.outfit}. `;
           continue;
+        } else {
+          // For non-img2img (DALL-E etc): use Vision to analyze photo → inject description
+          const visionDesc = await describeCharacterFromPhoto(
+            char.referenceImageUrl,
+            char.name,
+            series.visualStyle
+          );
+          if (visionDesc) {
+            charDescriptions += `\n[${char.name.toUpperCase()}] (analyzed from photo): ${visionDesc}. `;
+            continue;
+          }
         }
       }
 
@@ -246,18 +254,28 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
       const falKey = process.env.FAL_API_KEY;
       if (!falKey) throw new Error("FAL_API_KEY manquante — ajoutez-la dans Paramètres");
 
+      // Fal.ai image_size must be an object {width, height} or predefined preset
+      const falImageSize = format === "9:16"
+        ? { width: 576, height: 1024 }
+        : { width: 1024, height: 576 };
+
       const falBody: Record<string, unknown> = {
         prompt: prompt.slice(0, 2000),
-        image_size: format === "9:16" ? "portrait_9_16" : "landscape_16_9",
+        image_size: falImageSize,
         num_images: 1,
         enable_safety_checker: false,
+        sync_mode: true,
       };
 
+      // Send character reference image for img2img models
       if (generator.supportsImgToImg && refImages.length > 0) {
         const charRef = refImages.find(r => r.type === "character");
         if (charRef) {
           const uri = await toBase64Uri(charRef.url);
-          if (uri) { falBody.image_url = uri; falBody.strength = 0.82; }
+          if (uri) {
+            falBody.image_url = uri;
+            falBody.strength = 0.80;
+          }
         }
       }
 
@@ -268,11 +286,11 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
       });
       if (!falRes.ok) {
         const errText = await falRes.text();
-        throw new Error(`Fal.ai erreur ${falRes.status}: ${errText.slice(0, 200)}`);
+        throw new Error(`Fal.ai erreur ${falRes.status}: ${errText.slice(0, 300)}`);
       }
       const falData = await falRes.json();
       imageUrl = falData.images?.[0]?.url || falData.image?.url || "";
-      if (!imageUrl) throw new Error(`Fal.ai: pas d'image dans la réponse: ${JSON.stringify(falData).slice(0, 200)}`);
+      if (!imageUrl) throw new Error(`Fal.ai: pas d'image — réponse: ${JSON.stringify(falData).slice(0, 200)}`);
 
     } else if (generator.provider === "Together.ai") {
       const togetherKey = process.env.TOGETHER_API_KEY;
