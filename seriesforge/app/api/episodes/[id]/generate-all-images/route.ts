@@ -35,18 +35,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       try {
         // Match characters in this scene
         const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
-        const presentChars = series.characters.filter(c =>
-          sceneCharNames.some(n => n.toLowerCase().includes(c.name.toLowerCase()))
+        const presentChars = series.characters.filter((c: typeof series.characters[number]) =>
+          sceneCharNames.some((n: string) => n.toLowerCase().includes(c.name.toLowerCase()))
         );
+        if (presentChars.length > 1) {
+          throw new Error(
+            `Scène ${scene.sceneNumber}: génération bloquée pour éviter une image incohérente et coûteuse. Utilisez Nano Banana pour ${presentChars.length} personnages.`
+          );
+        }
 
         // Match environment
-        const matchedEnv = series.environments.find(e =>
+        const matchedEnv = series.environments.find((e: typeof series.environments[number]) =>
           scene.location?.toLowerCase().includes(e.name.toLowerCase())
         ) || series.environments[0];
 
         // Build character block with consistency + voice
         const charBlock = presentChars.length > 0
-          ? presentChars.map(c =>
+          ? presentChars.map((c: typeof presentChars[number]) =>
               `"${c.name}": ${c.physicalDescription}. Outfit: ${c.outfit}. LOCK: ${c.consistencyPrompt}${c.voiceProfile ? ` [Voice: ${c.voiceProfile}]` : ""}.`
             ).join(" | ")
           : sceneCharNames.join(", ");
@@ -82,7 +87,7 @@ Maintain exact character identity. Same outfits. Same physical appearance. High 
             sceneNumber: scene.sceneNumber,
             success: true,
             imageUrl,
-            characters: presentChars.map(c => c.name),
+            characters: presentChars.map((c: typeof presentChars[number]) => c.name),
             environment: matchedEnv?.name,
           });
         }

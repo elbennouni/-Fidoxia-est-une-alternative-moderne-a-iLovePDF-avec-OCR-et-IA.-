@@ -97,12 +97,21 @@ export async function POST(req: NextRequest) {
     const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
 
     // Get characters present in this scene WITH their reference photos
-    const presentChars = series.characters.filter(c =>
-      sceneCharNames.some(sc => sc.toLowerCase().includes(c.name.toLowerCase()))
+    const presentChars = series.characters.filter((c: typeof series.characters[number]) =>
+      sceneCharNames.some((sc: string) => sc.toLowerCase().includes(c.name.toLowerCase()))
     );
+    const multiCharacterScene = presentChars.length > 1;
+
+    if (multiCharacterScene && !generator.multiCharacterSafe) {
+      return NextResponse.json({
+        error: `Le générateur "${generator.name}" n'est pas fiable pour une scène avec plusieurs personnages. Utilisez Nano Banana pour éviter des images aléatoires et des coûts inutiles.`,
+        recommendedGeneratorId: "nano-banana-pro",
+        presentCharacters: presentChars.map((c: typeof presentChars[number]) => c.name),
+      }, { status: 400 });
+    }
 
     // Get matching environment
-    const matchedEnv = series.environments.find(e =>
+    const matchedEnv = series.environments.find((e: typeof series.environments[number]) =>
       scene.location?.toLowerCase().includes(e.name.toLowerCase())
     ) || series.environments[0];
 
@@ -110,13 +119,20 @@ export async function POST(req: NextRequest) {
 
     // Build reference images list (characters first, then env)
     const refImages: Array<{ type: string; name: string; url: string }> = [
-      ...presentChars.filter(c => c.referenceImageUrl).map(c => ({
+      ...presentChars.filter((c: typeof presentChars[number]) => c.referenceImageUrl).map((c: typeof presentChars[number]) => ({
         type: "character",
         name: c.name,
         url: c.referenceImageUrl!,
       })),
       ...(envPreview ? [{ type: "environment", name: matchedEnv!.name, url: envPreview }] : []),
     ];
+
+    if (multiCharacterScene && generator.multiCharacterSafe && refImages.filter(r => r.type === "character").length < presentChars.length) {
+      return NextResponse.json({
+        error: `Références personnage insuffisantes pour une scène multi-personnages. Ajoutez une photo de référence pour: ${presentChars.filter((c: typeof presentChars[number]) => !c.referenceImageUrl).map((c: typeof presentChars[number]) => c.name).join(", ")}.`,
+        recommendedGeneratorId: "nano-banana-pro",
+      }, { status: 400 });
+    }
 
     // ─── BUILD THE PROMPT ───────────────────────────────────────────────────────
 
@@ -372,8 +388,8 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
       sceneId,
       generator: generator.name,
       refImagesUsed: refImages.map(r => `${r.name} (${r.type})`),
-      charactersWithPhoto: presentChars.filter(c => c.referenceImageUrl).map(c => c.name),
-      charactersWithDNA: presentChars.filter(c => c.visualDNA).map(c => c.name),
+      charactersWithPhoto: presentChars.filter((c: typeof presentChars[number]) => c.referenceImageUrl).map((c: typeof presentChars[number]) => c.name),
+      charactersWithDNA: presentChars.filter((c: typeof presentChars[number]) => c.visualDNA).map((c: typeof presentChars[number]) => c.name),
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Generation failed";

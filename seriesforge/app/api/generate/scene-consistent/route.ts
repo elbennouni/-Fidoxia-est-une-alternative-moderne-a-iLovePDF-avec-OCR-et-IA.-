@@ -36,24 +36,34 @@ export async function POST(req: NextRequest) {
     const format = scene.episode.format;
 
     const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
+    const presentChars = series.characters.filter((c: typeof series.characters[number]) =>
+      sceneCharNames.some((n: string) => n.toLowerCase().includes(c.name.toLowerCase()))
+    );
+    if (presentChars.length > 1) {
+      return NextResponse.json({
+        error: "Scène multi-personnages détectée. Utilisez Nano Banana pour éviter des visages aléatoires et des dépenses inutiles.",
+        recommendedGenerator: "nano-banana-pro",
+        characters: presentChars.map((c: typeof presentChars[number]) => c.name),
+      }, { status: 400 });
+    }
 
     // Match environment
-    const matchedEnv = series.environments.find(e =>
+    const matchedEnv = series.environments.find((e: typeof series.environments[number]) =>
       scene.location?.toLowerCase().includes(e.name.toLowerCase())
     ) || series.environments[0];
 
     // Build character data with visual DNA
-    const characters = series.characters.map(c => ({
+    const characters = series.characters.map((c: typeof series.characters[number]) => ({
       name: c.name,
       consistencyPrompt: c.consistencyPrompt,
       visualDNA: c.visualDNA ? JSON.parse(c.visualDNA) as VisualDNA : null,
     }));
 
     // Check if all characters have DNA, warn if not
-    const charsInScene = characters.filter(c =>
-      sceneCharNames.some(sc => sc.toLowerCase().includes(c.name.toLowerCase()))
+    const charsInScene = characters.filter((c: typeof characters[number]) =>
+      sceneCharNames.some((sc: string) => sc.toLowerCase().includes(c.name.toLowerCase()))
     );
-    const missingDNA = charsInScene.filter(c => !c.visualDNA).map(c => c.name);
+    const missingDNA = charsInScene.filter((c: typeof charsInScene[number]) => !c.visualDNA).map((c: typeof charsInScene[number]) => c.name);
 
     // Build the scene prompt with full DNA
     const prompt = buildScenePromptWithDNA({
@@ -97,7 +107,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       imageUrl,
       sceneId,
-      charactersUsed: charsInScene.map(c => c.name),
+      charactersUsed: charsInScene.map((c: typeof charsInScene[number]) => c.name),
       missingDNA,
       environmentUsed: matchedEnv?.name || null,
       promptLength: prompt.length,

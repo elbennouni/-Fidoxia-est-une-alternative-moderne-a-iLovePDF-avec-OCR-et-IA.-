@@ -147,6 +147,9 @@ function GeneratorCard({
           <span className="text-xs text-gray-500">{SPEED_ICONS[gen.speed]} {gen.speed}</span>
           {gen.supportsImgToImg && <span className="text-xs text-blue-400">📎 img2img</span>}
           {gen.supportsReference && <span className="text-xs text-teal-400">🎭 référence</span>}
+          {gen.multiCharacterSafe
+            ? <span className="text-xs text-green-400">👥 multi-perso OK</span>
+            : <span className="text-xs text-orange-400">👤 solo / 1 visage</span>}
         </div>
       </div>
 

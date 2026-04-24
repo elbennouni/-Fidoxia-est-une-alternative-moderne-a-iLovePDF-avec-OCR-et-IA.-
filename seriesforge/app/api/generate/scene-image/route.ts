@@ -35,18 +35,30 @@ export async function POST(req: NextRequest) {
 
     // Get characters present in this scene
     const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
-    const presentChars = series.characters.filter(c =>
-      sceneCharNames.some(n => n.toLowerCase().includes(c.name.toLowerCase()))
+    const presentChars = series.characters.filter((c: typeof series.characters[number]) =>
+      sceneCharNames.some((n: string) => n.toLowerCase().includes(c.name.toLowerCase()))
     );
+    const charsWithPhoto = presentChars.filter((c: typeof presentChars[number]) => c.referenceImageUrl);
+
+    if (presentChars.length > 1) {
+      return NextResponse.json({
+        error: `Cette scene contient ${presentChars.length} personnages. DALL-E sans references multi-personnages risque de generer des visages aleatoires. Utilisez Nano Banana avec une photo par personnage.`,
+        blockedToSaveCredits: true,
+        recommendedGenerator: "nano-banana-pro",
+        charactersMissingPhoto: presentChars
+          .filter((c: typeof presentChars[number]) => !c.referenceImageUrl)
+          .map((c: typeof presentChars[number]) => c.name),
+      }, { status: 400 });
+    }
 
     // Get environment matching the scene location
-    const matchedEnv = series.environments.find(e =>
+    const matchedEnv = series.environments.find((e: typeof series.environments[number]) =>
       scene.location?.toLowerCase().includes(e.name.toLowerCase())
     ) || series.environments[0];
 
     // Build rich character block with consistency locks + voices
     const charBlock = presentChars.length > 0
-      ? presentChars.map(c =>
+      ? presentChars.map((c: typeof presentChars[number]) =>
           `CHARACTER "${c.name}": ${c.physicalDescription}. Outfit: ${c.outfit}. CONSISTENCY LOCK: ${c.consistencyPrompt}${c.voiceProfile ? ` Voice: ${c.voiceProfile}` : ""}.`
         ).join("\n")
       : sceneCharNames.join(", ");
@@ -92,7 +104,8 @@ Requirements: Maintain exact character visual identity as described. Same outfit
     return NextResponse.json({
       imageUrl,
       sceneId,
-      charactersUsed: presentChars.map(c => c.name),
+      charactersUsed: presentChars.map((c: typeof presentChars[number]) => c.name),
+      charactersWithPhoto: charsWithPhoto.map((c: typeof charsWithPhoto[number]) => c.name),
       environmentUsed: matchedEnv?.name || null,
     });
   } catch (error) {

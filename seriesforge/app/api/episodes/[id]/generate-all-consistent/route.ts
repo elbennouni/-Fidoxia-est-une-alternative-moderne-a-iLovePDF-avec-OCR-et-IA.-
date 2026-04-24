@@ -88,7 +88,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     // Build character list with DNA
-    const characters = series.characters.map(c => ({
+    const characters = series.characters.map((c: typeof series.characters[number]) => ({
       name: c.name,
       consistencyPrompt: c.consistencyPrompt,
       visualDNA: c.visualDNA ? JSON.parse(c.visualDNA) as VisualDNA : null,
@@ -104,24 +104,37 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     for (const scene of scenes) {
       try {
         const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
+        const presentCharCount = series.characters.filter((char: typeof series.characters[number]) =>
+          sceneCharNames.some(sc => sc.toLowerCase().includes(char.name.toLowerCase()))
+        ).length;
 
-        const matchedEnv = series.environments.find(e =>
+        if (presentCharCount > 1) {
+          results.push({
+            sceneNumber: scene.sceneNumber,
+            success: false,
+            skipped: true,
+            error: "Scène multi-personnages ignorée pour éviter une génération incohérente coûteuse. Utilisez Nano Banana avec photos de référence.",
+          });
+          continue;
+        }
+
+        const matchedEnv = series.environments.find((e: typeof series.environments[number]) =>
           scene.location?.toLowerCase().includes(e.name.toLowerCase())
         ) || series.environments[0];
 
         // Build character descriptions: DNA > Vision photo analysis > text
-      let photoDescriptions = "";
-      for (const char of series.characters) {
-        const inScene = sceneCharNames.some(sc => sc.toLowerCase().includes(char.name.toLowerCase()));
-        if (!inScene) continue;
-        if (char.visualDNA) continue; // already handled by buildScenePromptWithDNA
-        if (char.referenceImageUrl) {
-          const desc = await describeFromPhoto(char.referenceImageUrl, char.name, series.visualStyle);
-          if (desc) photoDescriptions += `\n[${char.name.toUpperCase()} from photo]: ${desc}.`;
+        let photoDescriptions = "";
+        for (const char of series.characters) {
+          const inScene = sceneCharNames.some(sc => sc.toLowerCase().includes(char.name.toLowerCase()));
+          if (!inScene) continue;
+          if (char.visualDNA) continue; // already handled by buildScenePromptWithDNA
+          if (char.referenceImageUrl) {
+            const desc = await describeFromPhoto(char.referenceImageUrl, char.name, series.visualStyle);
+            if (desc) photoDescriptions += `\n[${char.name.toUpperCase()} from photo]: ${desc}.`;
+          }
         }
-      }
 
-      const baseprompt = buildScenePromptWithDNA({
+        const baseprompt = buildScenePromptWithDNA({
           characters,
           sceneCharacters: sceneCharNames,
           location: scene.location || "",
@@ -135,7 +148,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           mood: matchedEnv?.mood || undefined,
         });
 
-      const prompt = photoDescriptions ? `${baseprompt}\n\nADDITIONAL CHARACTER PHOTO REFERENCES:${photoDescriptions}` : baseprompt;
+        const prompt = photoDescriptions ? `${baseprompt}\n\nADDITIONAL CHARACTER PHOTO REFERENCES:${photoDescriptions}` : baseprompt;
 
         // Force 9:16 by default (TikTok/Reels)
         const epFormat = episode.format === "16:9" ? "16:9" : "9:16";

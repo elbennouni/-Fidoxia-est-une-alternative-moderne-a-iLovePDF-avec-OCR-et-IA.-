@@ -1,8 +1,46 @@
-import OpenAI from "openai";
 import { getCharacterDescriptionsBlock } from "./characterConsistencyAgent";
 import type { CharacterData } from "./characterConsistencyAgent";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+function extractDialogueSpeakers(dialogue: string): string[] {
+  const speakers = dialogue
+    .split("\n")
+    .map((line) => line.match(/^\s*([^:\n]{1,40})\s*:/)?.[1]?.trim())
+    .filter((speaker): speaker is string => Boolean(speaker));
+
+  return [...new Set(speakers)];
+}
+
+export function buildSpeechDirectionBlock(params: {
+  dialogue?: string;
+  narration?: string;
+}): string {
+  const dialogue = params.dialogue?.trim() || "";
+  const narration = params.narration?.trim() || "";
+  const speakers = dialogue ? extractDialogueSpeakers(dialogue) : [];
+
+  if (!dialogue && !narration) return "";
+
+  if (dialogue) {
+    const speakerList = speakers.length > 0 ? speakers.join(", ") : "the speaking character";
+    return `Speech performance:
+On-screen dialogue is present.
+Dialogue lines:
+${dialogue}
+Visible speakers: ${speakerList}.
+Use readable speech framing: medium close-up, over-the-shoulder, or two-shot during line delivery.
+Animate precise lip sync for the active speaker only: visible mouth and jaw articulation on every spoken phrase, mouth closes on pauses, listeners keep lips mostly closed with subtle reactions.
+Add natural conversational beats: blinks, eyebrow motion, head nods, reaction pauses between lines.
+Do not keep all characters talking at once.
+Do not hide the active speaker in a wide shot during key dialogue lines.`;
+  }
+
+  return `Voice-over direction:
+Narration is present without visible on-screen dialogue.
+Narration text:
+${narration}
+Characters should react through eyes, posture, and gestures.
+Keep mouths mostly closed unless a character is visibly speaking on screen.`;
+}
 
 export async function generateImagePrompt(params: {
   scene: {
@@ -12,6 +50,8 @@ export async function generateImagePrompt(params: {
     characters: string[];
     emotion: string;
     camera: string;
+    narration: string;
+    dialogue: string;
   };
   visualStyle: string;
   format: string;
@@ -20,8 +60,12 @@ export async function generateImagePrompt(params: {
 }): Promise<string> {
   const { scene, visualStyle, format, allCharacters, environmentDescription } = params;
   const characterDesc = getCharacterDescriptionsBlock(scene.characters, allCharacters);
+  const dialogueSpeakers = scene.dialogue ? extractDialogueSpeakers(scene.dialogue) : [];
+  const dialogueCue = scene.dialogue
+    ? ` Dialogue beat: ${dialogueSpeakers.length > 0 ? dialogueSpeakers.join(", ") : scene.characters.join(", ")} speaking on screen with readable expressions.`
+    : "";
 
-  return `${visualStyle} cinematic keyframe, ${format}, Characters: ${characterDesc || scene.characters.join(", ")}, Location: ${scene.location}${environmentDescription ? ` - ${environmentDescription}` : ""}, Action: ${scene.action}, Emotion: ${scene.emotion}, Camera: ${scene.camera}, coherent with episode storyboard, same character identity, same outfit, high-quality animated still.`;
+  return `${visualStyle} cinematic keyframe, ${format}, Characters: ${characterDesc || scene.characters.join(", ")}, Location: ${scene.location}${environmentDescription ? ` - ${environmentDescription}` : ""}, Action: ${scene.action}, Emotion: ${scene.emotion}, Camera: ${scene.camera}.${dialogueCue} coherent with episode storyboard, same character identity, same outfit, high-quality animated still.`;
 }
 
 export async function generateVideoPrompt(params: {
@@ -44,6 +88,10 @@ export async function generateVideoPrompt(params: {
 }): Promise<string> {
   const { scene, visualStyle, format, allCharacters, environmentDescription, previousSceneContext } = params;
   const characterDesc = getCharacterDescriptionsBlock(scene.characters, allCharacters);
+  const speechDirection = buildSpeechDirectionBlock({
+    dialogue: scene.dialogue,
+    narration: scene.narration,
+  });
 
   const [cameraStart, ...cameraRest] = scene.camera.split(",");
   const cameraMovement = cameraRest.join(",").trim() || scene.camera;
@@ -76,6 +124,8 @@ Natural environment movement, crowd reactions, atmospheric effects matching the 
 
 Sound design:
 ${scene.soundDesign}
+
+${speechDirection ? `${speechDirection}\n` : ""}
 
 ${previousSceneContext ? `Continuity with previous scene: ${previousSceneContext}` : ""}
 

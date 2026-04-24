@@ -14,6 +14,7 @@ export interface ImageGenerator {
   badge?: string;
   apiKey: string;
   replicateModel?: string;
+  multiCharacterSafe?: boolean;
 }
 
 export interface VideoGenerator {
@@ -46,6 +47,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: false,
     badge: "95% Cohérence",
     apiKey: "NANOBANA_API_KEY",
+    multiCharacterSafe: true,
   },
   {
     id: "nano-banana",
@@ -62,6 +64,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: false,
     badge: "14 refs",
     apiKey: "NANOBANA_API_KEY",
+    multiCharacterSafe: true,
   },
   {
     id: "ideogram-character",
@@ -78,6 +81,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: false,
     badge: "Cohérence visage",
     apiKey: "FAL_API_KEY",
+    multiCharacterSafe: false,
   },
   {
     id: "instant-character",
@@ -94,6 +98,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: false,
     badge: "Identité forte",
     apiKey: "FAL_API_KEY",
+    multiCharacterSafe: false,
   },
   {
     id: "minimax-subject",
@@ -110,6 +115,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: false,
     badge: "Photo → Scène",
     apiKey: "FAL_API_KEY",
+    multiCharacterSafe: false,
   },
   {
     id: "dalle3-hd",
@@ -126,6 +132,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: false,
     badge: "Recommandé",
     apiKey: "OPENAI_API_KEY",
+    multiCharacterSafe: false,
   },
   {
     id: "dalle3-standard",
@@ -141,6 +148,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     style: "any",
     free: false,
     apiKey: "OPENAI_API_KEY",
+    multiCharacterSafe: false,
   },
   {
     id: "flux-schnell",
@@ -158,6 +166,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     badge: "Gratuit",
     apiKey: "REPLICATE_API_TOKEN",
     replicateModel: "black-forest-labs/flux-schnell",
+    multiCharacterSafe: false,
   },
   {
     id: "flux-dev",
@@ -175,6 +184,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     badge: "img2img",
     apiKey: "REPLICATE_API_TOKEN",
     replicateModel: "black-forest-labs/flux-dev",
+    multiCharacterSafe: false,
   },
   {
     id: "flux-pro",
@@ -192,6 +202,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     badge: "Ultra",
     apiKey: "FAL_API_KEY",
     replicateModel: "black-forest-labs/flux-1.1-pro",
+    multiCharacterSafe: false,
   },
   {
     id: "sdxl",
@@ -208,6 +219,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: false,
     apiKey: "REPLICATE_API_TOKEN",
     replicateModel: "stability-ai/sdxl",
+    multiCharacterSafe: false,
   },
   {
     id: "playground-v3",
@@ -224,6 +236,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: false,
     apiKey: "REPLICATE_API_TOKEN",
     replicateModel: "playgroundai/playground-v2.5-1024px-aesthetic",
+    multiCharacterSafe: false,
   },
   {
     id: "ideogram-v2",
@@ -241,6 +254,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     badge: "Pixar 3D",
     apiKey: "REPLICATE_API_TOKEN",
     replicateModel: "ideogram-ai/ideogram-v2",
+    multiCharacterSafe: false,
   },
   {
     id: "fal-flux-schnell",
@@ -257,6 +271,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: true,
     badge: "Quasi gratuit",
     apiKey: "FAL_API_KEY",
+    multiCharacterSafe: false,
   },
   {
     id: "fal-flux-dev",
@@ -273,6 +288,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: false,
     badge: "img2img",
     apiKey: "FAL_API_KEY",
+    multiCharacterSafe: false,
   },
   {
     id: "fal-recraft",
@@ -289,6 +305,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: false,
     badge: "Illustration",
     apiKey: "FAL_API_KEY",
+    multiCharacterSafe: false,
   },
   {
     id: "together-flux-schnell",
@@ -305,6 +322,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: true,
     badge: "100% Gratuit",
     apiKey: "TOGETHER_API_KEY",
+    multiCharacterSafe: false,
   },
   {
     id: "hf-free",
@@ -321,6 +339,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: true,
     badge: "Gratuit HF",
     apiKey: "HUGGINGFACE_API_KEY",
+    multiCharacterSafe: false,
   },
   {
     id: "stability-core",
@@ -337,6 +356,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     free: false,
     badge: "SD Officiel",
     apiKey: "STABILITY_API_KEY",
+    multiCharacterSafe: false,
   },
   {
     id: "stability-ultra",
@@ -352,6 +372,7 @@ export const IMAGE_GENERATORS: ImageGenerator[] = [
     style: "any",
     free: false,
     apiKey: "STABILITY_API_KEY",
+    multiCharacterSafe: false,
   },
 ];
 

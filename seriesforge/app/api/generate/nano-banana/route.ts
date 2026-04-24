@@ -97,10 +97,10 @@ export async function POST(req: NextRequest) {
 
     // Get characters in this scene with their photos
     const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
-    const presentChars = series.characters.filter(c =>
-      sceneCharNames.some(sc => sc.toLowerCase().includes(c.name.toLowerCase()))
+    const presentChars = series.characters.filter((c: typeof series.characters[number]) =>
+      sceneCharNames.some((sc: string) => sc.toLowerCase().includes(c.name.toLowerCase()))
     );
-    const charsWithPhoto = presentChars.filter(c => c.referenceImageUrl);
+    const charsWithPhoto = presentChars.filter((c: typeof presentChars[number]) => c.referenceImageUrl);
 
     // Upload all reference photos to get public URLs
     const inputImageUrls: string[] = [];
@@ -115,8 +115,18 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const missingCharacterRefs = presentChars
+      .filter((char: typeof presentChars[number]) => !uploadedChars.includes(char.name))
+      .map((char: typeof presentChars[number]) => char.name);
+
+    if (presentChars.length > 1 && uploadedChars.length < presentChars.length) {
+      return NextResponse.json({
+        error: `Références insuffisantes pour une scène multi-personnages. Photos valides: ${uploadedChars.join(", ") || "aucune"} · manquantes: ${missingCharacterRefs.join(", ")}`,
+      }, { status: 400 });
+    }
+
     // Add environment reference if available
-    const matchedEnv = series.environments.find(e =>
+    const matchedEnv = series.environments.find((e: typeof series.environments[number]) =>
       scene.location?.toLowerCase().includes(e.name.toLowerCase())
     ) || series.environments[0];
 
@@ -132,9 +142,9 @@ export async function POST(req: NextRequest) {
       : scene.location || "outdoor location";
 
     // Character descriptions from DNA or text
-    const charLines = presentChars.map(c => {
+    const charLines = presentChars.map((c: typeof presentChars[number]) => {
       const dna = c.visualDNA ? (() => { try { return JSON.parse(c.visualDNA!); } catch { return null; } })() : null;
-      const photoNote = charsWithPhoto.some(ch => ch.id === c.id) ? " [REPRODUCE EXACT FACE FROM REFERENCE PHOTO]" : "";
+      const photoNote = charsWithPhoto.some((ch: typeof charsWithPhoto[number]) => ch.id === c.id) ? " [REPRODUCE EXACT FACE FROM REFERENCE PHOTO]" : "";
       if (dna?.lockedPrompt) return `${c.name}${photoNote}: ${dna.lockedPrompt}`;
       return `${c.name}${photoNote}: ${c.physicalDescription}. Outfit: ${c.outfit}.`;
     }).join("\n");
@@ -165,6 +175,12 @@ COMPOSITION RULES:
 STYLE: ${series.visualStyle}, high quality animation render, vibrant colors, professional composition`;
 
     const mode = inputImageUrls.length > 0 ? "edit" : "generate";
+
+    if (presentChars.length > 0 && mode !== "edit") {
+      return NextResponse.json({
+        error: "Impossible de lancer la génération sans références image valides pour les personnages de cette scène.",
+      }, { status: 400 });
+    }
 
     const body: Record<string, unknown> = {
       prompt: prompt.slice(0, 1500),
@@ -227,7 +243,8 @@ STYLE: ${series.visualStyle}, high quality animation render, vibrant colors, pro
       mode,
       referencesUploaded: uploadedChars,
       totalRefs: inputImageUrls.length,
-      charsWithoutPhoto: presentChars.filter(c => !charsWithPhoto.some(cp => cp.id === c.id)).map(c => c.name),
+      charsWithoutPhoto: presentChars.filter((c: typeof presentChars[number]) => !charsWithPhoto.some((cp: typeof charsWithPhoto[number]) => cp.id === c.id)).map((c: typeof presentChars[number]) => c.name),
+      charsMissingValidRef: missingCharacterRefs,
     });
 
   } catch (error) {

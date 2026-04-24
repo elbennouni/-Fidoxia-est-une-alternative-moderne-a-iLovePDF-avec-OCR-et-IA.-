@@ -156,6 +156,15 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
   const CHARACTER_CONSISTENT_MODELS = ["ideogram-character", "instant-character", "minimax-subject"];
 
   async function generateSceneImage(scene: Scene) {
+    const sceneCharacters = JSON.parse(scene.charactersJson || "[]") as string[];
+    const multiCharacterScene = sceneCharacters.length > 1;
+    const selectedGenerator = IMAGE_GENERATORS.find(g => g.id === selectedImgGen);
+
+    if (multiCharacterScene && selectedGenerator && !selectedGenerator.multiCharacterSafe) {
+      toast.error(`"${selectedGenerator.name}" ne peut pas garder plusieurs personnages cohérents dans la même scène. Utilisez Nano Banana.`);
+      return;
+    }
+
     setGeneratingSceneImage(scene.id);
     const gen = IMAGE_GENERATORS.find(g => g.id === selectedImgGen);
     const t = toast.loading(`Génération scène ${scene.sceneNumber} avec ${gen?.name || "DALL-E 3"}...`);
@@ -601,9 +610,17 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
                             {generatingSceneImage === scene.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                             {scene.imageUrl ? "Regénérer" : "Générer"}
                           </button>
-                          {CHARACTER_CONSISTENT_MODELS.includes(selectedImgGen) && (() => {
+                          {(() => {
                             const chars: string[] = JSON.parse(scene.charactersJson || "[]");
-                            if (chars.length > 0) {
+                            const currentGenerator = IMAGE_GENERATORS.find(g => g.id === selectedImgGen);
+                            if (chars.length > 1 && currentGenerator && !currentGenerator.multiCharacterSafe) {
+                              return (
+                                <p className="text-xs text-red-400/80 text-center px-1">
+                                  Multi-personnages: utilisez Nano Banana pour éviter des visages aléatoires et des coûts inutiles
+                                </p>
+                              );
+                            }
+                            if (CHARACTER_CONSISTENT_MODELS.includes(selectedImgGen) && chars.length > 0) {
                               return (
                                 <p className="text-xs text-blue-400/70 text-center px-1">
                                   📸 Photo requise dans Personnages

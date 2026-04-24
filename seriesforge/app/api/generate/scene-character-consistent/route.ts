@@ -10,9 +10,32 @@ import { getCurrentUser } from "@/lib/auth";
 import { readFile } from "fs/promises";
 import path from "path";
 
+type SeriesCharacter = {
+  id: string;
+  name: string;
+  physicalDescription: string;
+  outfit: string;
+  visualDNA: string | null;
+  referenceImageUrl: string | null;
+};
+
+type SeriesEnvironment = {
+  name: string;
+  description: string;
+  lighting: string | null;
+  mood: string | null;
+};
+import { tryEnsureDurableImageUrl } from "@/lib/storage/durableImages";
+
 async function toPublicUrl(imageUrl: string, falKey: string): Promise<string | null> {
   if (!imageUrl) return null;
-  if (imageUrl.startsWith("https://") || imageUrl.startsWith("http://")) return imageUrl;
+  if (imageUrl.startsWith("https://") || imageUrl.startsWith("http://")) {
+    return tryEnsureDurableImageUrl(imageUrl, {
+      folder: "references",
+      fileNamePrefix: `scene-ref-${Date.now()}`,
+      forceRehostRemote: true,
+    });
+  }
   if (!imageUrl.startsWith("/")) return null;
 
   try {
@@ -46,15 +69,13 @@ async function toPublicUrl(imageUrl: string, falKey: string): Promise<string | n
 
 function buildScenePrompt(params: {
   action: string;
-  location: string;
   envDesc: string;
   emotion: string;
   camera: string;
   charLines: string;
   visualStyle: string;
-  format: string;
 }): string {
-  const { action, location, envDesc, emotion, camera, charLines, visualStyle, format } = params;
+  const { action, envDesc, emotion, camera, charLines, visualStyle } = params;
   return `${visualStyle}, vertical 9:16 portrait format, cinematic animated scene.
 
 SCENE IN ACTION: ${action}
@@ -100,15 +121,22 @@ export async function POST(req: NextRequest) {
     if (!scene) return NextResponse.json({ error: "Scène non trouvée" }, { status: 404 });
 
     const { series } = scene.episode;
-    const format = "9:16"; // Always 9:16 portrait
 
     const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
-    const presentChars = series.characters.filter(c =>
+    const presentChars = series.characters.filter((c: SeriesCharacter) =>
       sceneCharNames.some(sc => sc.toLowerCase().includes(c.name.toLowerCase()))
     );
-    const charsWithPhoto = presentChars.filter(c => c.referenceImageUrl);
+    const charsWithPhoto = presentChars.filter((c: SeriesCharacter) => c.referenceImageUrl);
 
-    const matchedEnv = series.environments.find(e =>
+    if (presentChars.length > 1) {
+      return NextResponse.json({
+        error: "Cette route n'accepte qu'un seul personnage de reference. Pour une scene avec plusieurs candidats, utilisez Nano Banana.",
+        sceneCharacters: presentChars.map((c: SeriesCharacter) => c.name),
+        recommendedGenerator: "nano-banana-pro",
+      }, { status: 400 });
+    }
+
+    const matchedEnv = series.environments.find((e: SeriesEnvironment) =>
       scene.location?.toLowerCase().includes(e.name.toLowerCase())
     ) || series.environments[0];
 
@@ -116,9 +144,9 @@ export async function POST(req: NextRequest) {
       ? `${matchedEnv.name} — ${matchedEnv.description}${matchedEnv.lighting ? `. ${matchedEnv.lighting}` : ""}${matchedEnv.mood ? `. ${matchedEnv.mood}` : ""}`
       : scene.location || "outdoor scene";
 
-    const charLines = presentChars.map(c => {
+    const charLines = presentChars.map((c: SeriesCharacter) => {
       const dna = c.visualDNA ? (() => { try { return JSON.parse(c.visualDNA!); } catch { return null; } })() : null;
-      const hasPhoto = charsWithPhoto.some(cp => cp.id === c.id);
+      const hasPhoto = charsWithPhoto.some((cp: SeriesCharacter) => cp.id === c.id);
       const photoTag = hasPhoto ? " [USE REFERENCE PHOTO]" : "";
       if (dna?.lockedPrompt) return `${c.name}${photoTag}: ${dna.lockedPrompt}`;
       return `${c.name}${photoTag}: ${c.physicalDescription}. Outfit: ${c.outfit}.`;
@@ -126,13 +154,11 @@ export async function POST(req: NextRequest) {
 
     const prompt = buildScenePrompt({
       action: scene.action || "dramatic cinematic moment",
-      location: scene.location || "",
       envDesc,
       emotion: scene.emotion || "dramatic",
       camera: scene.camera || "medium shot",
       charLines,
       visualStyle: series.visualStyle,
-      format,
     });
 
     // Get primary reference photo as public URL
@@ -162,7 +188,7 @@ export async function POST(req: NextRequest) {
       if (!res.ok) throw new Error(`Ideogram Character ${res.status}: ${(await res.text()).slice(0, 300)}`);
       const data = await res.json();
       imageUrl = data.images?.[0]?.url || "";
-      refImagesUsed = charsWithPhoto.map(c => c.name);
+      refImagesUsed = primaryChar ? [primaryChar.name] : [];
 
     } else if (model === "instant-character" && primaryRefUrl) {
       modelUsed = "Instant Character";
@@ -237,8 +263,8 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       imageUrl, sceneId, modelUsed, refImagesUsed,
-      charsWithPhoto: charsWithPhoto.map(c => c.name),
-      charsWithoutPhoto: presentChars.filter(c => !charsWithPhoto.some(cp => cp.id === c.id)).map(c => c.name),
+      charsWithPhoto: charsWithPhoto.map((c: SeriesCharacter) => c.name),
+      charsWithoutPhoto: presentChars.filter((c: SeriesCharacter) => !charsWithPhoto.some((cp: SeriesCharacter) => cp.id === c.id)).map((c: SeriesCharacter) => c.name),
     });
 
   } catch (error) {
