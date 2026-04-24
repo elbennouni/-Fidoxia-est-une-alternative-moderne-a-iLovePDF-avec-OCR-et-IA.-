@@ -33,20 +33,20 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         synopsis: episode.script,
         status: episode.status,
       },
-      characters: episode.series.characters.map(c => ({
+      characters: episode.series.characters.map((c: { name: string; physicalDescription: string; outfit: string; personality: string; consistencyPrompt: string }) => ({
         name: c.name,
         physicalDescription: c.physicalDescription,
         outfit: c.outfit,
         personality: c.personality,
         consistencyPrompt: c.consistencyPrompt,
       })),
-      environments: episode.series.environments.map(e => ({
+      environments: episode.series.environments.map((e: { name: string; description: string; lighting: string | null; mood: string | null }) => ({
         name: e.name,
         description: e.description,
         lighting: e.lighting,
         mood: e.mood,
       })),
-      scenes: episode.scenes.map(s => ({
+      scenes: episode.scenes.map((s: { sceneNumber: number; timecode: string | null; location: string | null; charactersJson: string | null; action: string | null; narration: string | null; dialogue: string | null; camera: string | null; emotion: string | null; soundDesign: string | null; imagePrompt: string | null; videoPrompt: string | null; audioPrompt: string | null; qualityScore: number | null; imageUrl: string | null; videoUrl: string | null; status: string }) => ({
         sceneNumber: s.sceneNumber,
         timecode: s.timecode,
         location: s.location,
