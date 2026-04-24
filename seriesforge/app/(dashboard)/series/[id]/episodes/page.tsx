@@ -4,7 +4,7 @@ import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { ArrowLeft, Plus, Film, X, Loader2, ChevronRight } from "lucide-react";
+import { ArrowLeft, Plus, Film, X, Loader2, ChevronRight, Trash2, AlertTriangle } from "lucide-react";
 
 interface Episode {
   id: string;
@@ -30,6 +30,8 @@ export default function EpisodesPage({ params }: { params: Promise<{ id: string 
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({ title: "", script: "", format: "9:16" });
 
   useEffect(() => { fetchData(); }, [seriesId]);
@@ -45,6 +47,17 @@ export default function EpisodesPage({ params }: { params: Promise<{ id: string 
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handleDelete(id: string) {
+    setDeleting(true);
+    try {
+      await fetch(`/api/episodes/${id}`, { method: "DELETE" });
+      toast.success("Épisode supprimé");
+      setDeleteId(null);
+      fetchData();
+    } catch { toast.error("Erreur suppression"); }
+    finally { setDeleting(false); }
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -86,6 +99,23 @@ export default function EpisodesPage({ params }: { params: Promise<{ id: string 
           </button>
         </div>
       </div>
+
+      {/* Delete Confirm */}
+      {deleteId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#13131a] border border-red-600/30 rounded-2xl w-full max-w-sm p-6 text-center">
+            <AlertTriangle className="w-10 h-10 text-red-400 mx-auto mb-3" />
+            <h2 className="text-lg font-bold text-white mb-2">Supprimer cet épisode ?</h2>
+            <p className="text-gray-400 text-sm mb-5">Toutes les scènes seront supprimées. Irréversible.</p>
+            <div className="flex gap-3">
+              <button onClick={() => setDeleteId(null)} className="flex-1 py-2.5 border border-[#2a2a3e] text-gray-400 rounded-xl">Annuler</button>
+              <button onClick={() => handleDelete(deleteId)} disabled={deleting} className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-semibold rounded-xl flex items-center justify-center gap-2">
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Supprimer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
@@ -138,24 +168,29 @@ export default function EpisodesPage({ params }: { params: Promise<{ id: string 
       ) : (
         <div className="space-y-3">
           {episodes.map(ep => (
-            <Link key={ep.id} href={`/episodes/${ep.id}/editor`} className="flex items-center justify-between p-5 bg-[#13131a] border border-[#2a2a3e] rounded-xl hover:border-purple-500/30 transition-all group">
-              <div className="flex items-center gap-4">
-                <div className="p-2 bg-orange-600/20 rounded-lg">
+            <div key={ep.id} className="flex items-center justify-between p-5 bg-[#13131a] border border-[#2a2a3e] rounded-xl hover:border-purple-500/30 transition-all group relative">
+              <Link href={`/episodes/${ep.id}/editor`} className="flex items-center gap-4 flex-1 min-w-0">
+                <div className="p-2 bg-orange-600/20 rounded-lg flex-shrink-0">
                   <Film className="w-5 h-5 text-orange-400" />
                 </div>
-                <div>
-                  <p className="font-bold text-white group-hover:text-purple-300 transition-colors">{ep.title}</p>
-                  {ep.script && <p className="text-xs text-gray-400 mt-0.5 line-clamp-1 max-w-md">{ep.script}</p>}
+                <div className="min-w-0">
+                  <p className="font-bold text-white group-hover:text-purple-300 transition-colors truncate">{ep.title}</p>
+                  {ep.script && <p className="text-xs text-gray-400 mt-0.5 line-clamp-1">{ep.script}</p>}
                   <p className="text-xs text-gray-500 mt-0.5">{new Date(ep.createdAt).toLocaleDateString()} · {ep.format}</p>
                 </div>
-              </div>
-              <div className="flex items-center gap-3">
+              </Link>
+              <div className="flex items-center gap-2">
                 <span className={`text-xs px-2 py-0.5 rounded-full border ${STATUS_COLORS[ep.status] || STATUS_COLORS.draft}`}>
                   {ep.status}
                 </span>
-                <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-purple-400 transition-colors" />
+                <Link href={`/episodes/${ep.id}/editor`} className="p-1.5 bg-purple-600/20 hover:bg-purple-600/40 rounded-lg transition-all">
+                  <ChevronRight className="w-4 h-4 text-purple-400" />
+                </Link>
+                <button onClick={() => setDeleteId(ep.id)} className="p-1.5 bg-red-600/0 hover:bg-red-600/20 text-gray-600 hover:text-red-400 rounded-lg transition-all">
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
-            </Link>
+            </div>
           ))}
         </div>
       )}
