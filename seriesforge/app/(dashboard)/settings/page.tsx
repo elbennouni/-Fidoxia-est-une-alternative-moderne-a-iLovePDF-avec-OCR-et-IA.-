@@ -70,6 +70,14 @@ const API_KEYS = [
     link: "https://nanophoto.ai/settings",
     required: false,
   },
+  {
+    key: "ELEVENLABS_API_KEY",
+    label: "ElevenLabs 🎙",
+    description: "Voix françaises ultra-naturelles — eleven_multilingual_v2, meilleure qualité TTS",
+    placeholder: "sk_...",
+    link: "https://elevenlabs.io/app/settings/api-keys",
+    required: false,
+  },
 ];
 
 export default function SettingsPage() {

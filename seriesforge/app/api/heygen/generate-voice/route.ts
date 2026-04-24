@@ -8,31 +8,32 @@ import { v4 as uuidv4 } from "uuid";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Fallback: OpenAI TTS when HeyGen voice doesn't support Starfish
-async function generateWithOpenAI(text: string, characterName: string, forceVoice?: string): Promise<string | null> {
+async function saveAudioBuffer(buffer: Buffer, prefix = "voice"): Promise<string> {
+  const fileName = `${prefix}-${uuidv4().slice(0, 8)}.mp3`;
+  const dir = path.join(process.cwd(), "public", "uploads", "voices");
+  await mkdir(dir, { recursive: true });
+  await writeFile(path.join(dir, fileName), buffer);
+  return `/uploads/voices/${fileName}`;
+}
+
+async function openAITTS(text: string, voiceName: string): Promise<string | null> {
   try {
-    const voice = forceVoice || (
-      characterName.toLowerCase().includes("narrat") ? "onyx"
-      : characterName.toLowerCase().includes("femme") || characterName.toLowerCase().includes("sarah") || characterName.toLowerCase().includes("marie") ? "shimmer"
+    const voiceMap: Record<string, string> = {
+      "openai-onyx": "onyx", "openai-echo": "echo", "openai-fable": "fable",
+      "openai-shimmer": "shimmer", "openai-nova": "nova", "openai-alloy": "alloy",
+    };
+    const voice = (voiceMap[voiceName] || (
+      voiceName.toLowerCase().includes("narrat") || voiceName.toLowerCase().includes("graves") ? "onyx"
+      : voiceName.toLowerCase().includes("femme") || voiceName.toLowerCase().includes("sophie") ? "shimmer"
       : "echo"
-    );
+    )) as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
 
-    const response = await openai.audio.speech.create({
-      model: "tts-1",
-      voice: voice as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer",
-      input: text.slice(0, 4096),
-      speed: 1.0,
+    const resp = await openai.audio.speech.create({
+      model: "tts-1-hd", voice, input: text.slice(0, 4096), speed: 1.0,
     });
-
-    const buffer = Buffer.from(await response.arrayBuffer());
-    const fileName = `voice-${uuidv4().slice(0, 8)}.mp3`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "voices");
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(path.join(uploadDir, fileName), buffer);
-    return `/uploads/voices/${fileName}`;
-  } catch {
-    return null;
-  }
+    const buf = Buffer.from(await resp.arrayBuffer());
+    return await saveAudioBuffer(buf);
+  } catch { return null; }
 }
 
 export async function POST(req: NextRequest) {
@@ -41,7 +42,6 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { sceneId, text, voiceId, characterName } = await req.json();
-
     if (!sceneId || !text?.trim() || !voiceId) {
       return NextResponse.json({ error: "sceneId, text et voiceId requis" }, { status: 400 });
     }
@@ -51,81 +51,97 @@ export async function POST(req: NextRequest) {
     });
     if (!scene) return NextResponse.json({ error: "Scène non trouvée" }, { status: 404 });
 
-    const apiKey = process.env.HEYGEN_API_KEY;
-
-    // OpenAI TTS voices (selected directly)
+    // ─── OpenAI TTS voices (selected directly) ───────────────────────
     if (voiceId.startsWith("openai-")) {
-      const openaiVoiceName = voiceId.replace("openai-", "") as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
-      const localUrl = await generateWithOpenAI(text.trim(), characterName, openaiVoiceName);
-      if (localUrl) {
-        await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: localUrl } });
-        return NextResponse.json({ success: true, audioUrl: localUrl, character: characterName, engine: "openai-tts" });
-      }
-      return NextResponse.json({ error: "OpenAI TTS échoué — vérifiez OPENAI_API_KEY" }, { status: 500 });
+      const url = await openAITTS(text.trim(), voiceId);
+      if (!url) throw new Error("OpenAI TTS échoué — vérifiez OPENAI_API_KEY");
+      await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
+      return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "openai-tts-hd" });
     }
 
-    // Demo mode
-    if (!apiKey || voiceId.startsWith("mock-")) {
-      // Try OpenAI TTS as demo
+    // ─── ElevenLabs voices ────────────────────────────────────────────
+    if (voiceId.startsWith("el-")) {
+      const elKey = process.env.ELEVENLABS_API_KEY;
+      if (!elKey) throw new Error("ELEVENLABS_API_KEY manquante — ajoutez-la dans Paramètres");
+      const realId = voiceId.replace(/^el-/, "");
+      const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${realId}`, {
+        method: "POST",
+        headers: { "xi-api-key": elKey, "Content-Type": "application/json", "Accept": "audio/mpeg" },
+        body: JSON.stringify({
+          text: text.trim().slice(0, 5000),
+          model_id: "eleven_multilingual_v2",
+          voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true },
+        }),
+      });
+      if (!res.ok) throw new Error(`ElevenLabs ${res.status}: ${await res.text().then(t => t.slice(0, 200))}`);
+      const buf = Buffer.from(await res.arrayBuffer());
+      const url = await saveAudioBuffer(buf);
+      await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
+      return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "elevenlabs-v2" });
+    }
+
+    // ─── Mock voices ──────────────────────────────────────────────────
+    if (voiceId.startsWith("mock-")) {
+      // Use OpenAI TTS as demo
       if (process.env.OPENAI_API_KEY) {
-        const localUrl = await generateWithOpenAI(text.trim(), characterName);
-        if (localUrl) {
-          await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: localUrl } });
-          return NextResponse.json({ success: true, audioUrl: localUrl, character: characterName, engine: "openai-tts" });
+        const url = await openAITTS(text.trim(), characterName);
+        if (url) {
+          await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
+          return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "openai-tts-hd-demo" });
         }
       }
-      return NextResponse.json({
-        success: true, mock: true,
-        message: "Mode démo — ajoutez HEYGEN_API_KEY ou OPENAI_API_KEY",
-        audioUrl: null, character: characterName,
-      });
+      return NextResponse.json({ success: true, mock: true, message: "Mode démo — ajoutez une clé API" });
     }
 
-    // Try HeyGen Starfish TTS
+    // ─── HeyGen TTS ───────────────────────────────────────────────────
+    const apiKey = process.env.HEYGEN_API_KEY;
+    if (!apiKey) throw new Error("HEYGEN_API_KEY manquante");
+
     const ttsRes = await fetch("https://api.heygen.com/v1/audio/text_to_speech", {
       method: "POST",
-      headers: {
-        "X-Api-Key": apiKey,
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-      },
+      headers: { "X-Api-Key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({ text: text.trim(), voice_id: voiceId, speed: 1.0 }),
     });
 
     if (ttsRes.ok) {
       const data = await ttsRes.json();
-      if (data.error) throw new Error(JSON.stringify(data.error));
-      const audioUrl = data.data?.audio_url || data.audio_url;
-      if (audioUrl) {
-        await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: audioUrl } });
-        return NextResponse.json({ success: true, audioUrl, character: characterName, engine: "heygen-starfish" });
+      if (!data.error) {
+        const audioUrl = data.data?.audio_url;
+        if (audioUrl) {
+          await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: audioUrl } });
+          return NextResponse.json({ success: true, audioUrl, character: characterName, engine: "heygen-starfish" });
+        }
       }
+      // HeyGen returned error
+      const errCode = data.error?.code;
+      const errMsg = data.error?.message || "";
+
+      if (errCode === "voice_unavailable" || errMsg.includes("not supported") || errMsg.includes("invalid_parameter")) {
+        // Fallback to OpenAI TTS
+        const url = await openAITTS(text.trim(), characterName);
+        if (url) {
+          await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
+          return NextResponse.json({
+            success: true, audioUrl: url, character: characterName,
+            engine: "openai-tts-fallback",
+            warning: `La voix HeyGen ne supporte pas Starfish TTS — audio généré avec OpenAI TTS HD`,
+          });
+        }
+      }
+      throw new Error(`HeyGen: ${data.error?.message || "Erreur inconnue"}`);
     }
 
-    // HeyGen failed — check if it's "not supported" error
-    const errText = await ttsRes.text().catch(() => "");
-    const isNotSupported = errText.includes("not supported") || errText.includes("invalid_parameter");
-
-    if (isNotSupported && process.env.OPENAI_API_KEY) {
-      // Fallback to OpenAI TTS
-      const localUrl = await generateWithOpenAI(text.trim(), characterName);
-      if (localUrl) {
-        await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: localUrl } });
-        return NextResponse.json({
-          success: true,
-          audioUrl: localUrl,
-          character: characterName,
-          engine: "openai-tts-fallback",
-          note: `La voix HeyGen "${voiceId.slice(0, 8)}..." ne supporte pas Starfish TTS. Audio généré avec OpenAI TTS à la place.`,
-        });
-      }
+    const errText = await ttsRes.text();
+    // Fallback
+    const url = await openAITTS(text.trim(), characterName);
+    if (url) {
+      await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
+      return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "openai-fallback" });
     }
-
-    throw new Error(`HeyGen TTS erreur ${ttsRes.status}: ${errText.slice(0, 200)}`);
+    throw new Error(`HeyGen ${ttsRes.status}: ${errText.slice(0, 200)}`);
 
   } catch (error) {
-    const msg = error instanceof Error ? error.message : "Erreur génération voix";
-    console.error("generate-voice error:", msg);
+    const msg = error instanceof Error ? error.message : "Erreur voix";
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

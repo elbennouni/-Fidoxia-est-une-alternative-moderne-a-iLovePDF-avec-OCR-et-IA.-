@@ -87,7 +87,7 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   const [editValue, setEditValue] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
-  useEffect(() => { fetchData(); fetchVoices(); }, [id]);
+  useEffect(() => { fetchData(); fetchVoices(); fetchElevenLabsVoices(); }, [id]);
 
   async function fetchData() {
     try {
@@ -111,6 +111,20 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
       setVoicesSource(data.source || "mock");
       if (data.note) setVoicesNote(data.note);
     } finally { setLoadingVoices(false); }
+  }
+
+  async function fetchElevenLabsVoices() {
+    try {
+      const res = await fetch("/api/elevenlabs/voices");
+      const data = await res.json();
+      if (data.voices?.length > 0) {
+        setVoices(prev => {
+          const elVoices = data.voices.map((v: HeyGenVoice) => ({ ...v, provider: "elevenlabs" }));
+          // Put ElevenLabs at top if we have API key
+          return data.source === "elevenlabs" ? [...elVoices, ...prev] : [...prev, ...elVoices];
+        });
+      }
+    } catch {}
   }
 
   async function assignVoiceToCharacter(charId: string, voice: HeyGenVoice) {
@@ -292,7 +306,9 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
     setGeneratingVoice(`${scene.id}-${characterName}`);
     const t = toast.loading(`Génération voix de ${characterName}...`);
     try {
-      const res = await fetch("/api/heygen/generate-voice", {
+      // Route to correct API based on voice prefix
+      const endpoint = voiceId.startsWith("el-") ? "/api/elevenlabs/generate-voice" : "/api/heygen/generate-voice";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sceneId: scene.id, text, voiceId, characterName }),
@@ -332,7 +348,8 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
     setGeneratingVoice(`${scene.id}-full`);
     const t = toast.loading(`Génération audio complet scène ${scene.sceneNumber}...`);
     try {
-      const res = await fetch("/api/heygen/generate-voice", {
+      const ep2 = voiceId.startsWith("el-") ? "/api/elevenlabs/generate-voice" : "/api/heygen/generate-voice";
+      const res = await fetch(ep2, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sceneId: scene.id, text: fullText, voiceId, characterName: "Scène complète" }),

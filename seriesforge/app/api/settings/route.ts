@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const env = await readEnv();
 
-    const allowed = ["OPENAI_API_KEY", "REPLICATE_API_TOKEN", "FAL_API_KEY", "HEYGEN_API_KEY", "TOGETHER_API_KEY", "HUGGINGFACE_API_KEY", "STABILITY_API_KEY", "NANOBANA_API_KEY"];
+    const allowed = ["OPENAI_API_KEY", "REPLICATE_API_TOKEN", "FAL_API_KEY", "HEYGEN_API_KEY", "TOGETHER_API_KEY", "HUGGINGFACE_API_KEY", "STABILITY_API_KEY", "NANOBANA_API_KEY", "ELEVENLABS_API_KEY"];
     for (const key of allowed) {
       if (body[key] !== undefined && body[key] !== "") {
         env[key] = body[key];
