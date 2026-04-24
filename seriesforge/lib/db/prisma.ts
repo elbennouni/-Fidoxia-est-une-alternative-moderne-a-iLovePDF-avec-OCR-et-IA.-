@@ -1,25 +1,25 @@
 import { PrismaClient } from "@prisma/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
-import path from "path";
+import { PrismaNeon } from "@prisma/adapter-neon";
+import { neonConfig } from "@neondatabase/serverless";
 
-function getDbUrl(): string {
-  const raw = process.env.DATABASE_URL || "file:./prisma/dev.db";
-  const filePath = raw.replace(/^file:/, "");
-  if (path.isAbsolute(filePath)) {
-    return `file:${filePath}`;
-  }
-  const resolved = path.join(process.cwd(), filePath.startsWith("./") ? filePath.slice(2) : filePath);
-  return `file:${resolved}`;
+// WebSocket for non-browser environments
+if (typeof WebSocket === "undefined") {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  neonConfig.webSocketConstructor = require("ws");
 }
+
+const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
 function createPrismaClient(): PrismaClient {
-  const adapter = new PrismaLibSql({ url: getDbUrl() });
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error("DATABASE_URL is not set. Add it in Vercel Environment Variables.");
+  }
+
+  // Pass connectionString directly (not a Pool instance)
+  const adapter = new PrismaNeon({ connectionString });
   return new PrismaClient({ adapter } as never);
 }
-
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
 
 export const prisma = globalForPrisma.prisma ?? createPrismaClient();
 

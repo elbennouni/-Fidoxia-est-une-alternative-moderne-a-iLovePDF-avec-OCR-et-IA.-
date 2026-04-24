@@ -10,8 +10,10 @@
   },
   "dependencies": {
     "@libsql/client": "^0.17.3",
+    "@neondatabase/serverless": "^1.1.0",
     "@prisma/adapter-better-sqlite3": "^7.8.0",
     "@prisma/adapter-libsql": "^7.8.0",
+    "@prisma/adapter-neon": "^7.8.0",
     "@prisma/client": "^7.8.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/better-sqlite3": "^7.6.13",
@@ -34,6 +36,7 @@
     "replicate": "^1.4.0",
     "sharp": "^0.34.5",
     "uuid": "^14.0.0",
+    "ws": "^8.20.0",
     "zustand": "^5.0.12"
   },
   "devDependencies": {
