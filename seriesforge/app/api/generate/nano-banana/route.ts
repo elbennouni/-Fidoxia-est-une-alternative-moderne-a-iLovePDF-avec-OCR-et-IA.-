@@ -1,11 +1,12 @@
 /**
- * Nano Banana Pro (Google Imagen 3 / Gemini 3 Pro Image)
- * API: nanophoto.ai
- * Supports up to 8 reference images for character consistency (95%+)
+ * Nano Banana Pro (Google Imagen 3 / Gemini 3 Pro)
  * 
- * Workflow:
- * 1. POST /api/nano-banana-pro/generate → returns generationId
- * 2. Poll POST /api/nano-banana-pro/check-status every 3-5s until completed
+ * KEY RULES:
+ * - inputImageUrls = reference photos of characters (must be PUBLIC https:// URLs)
+ * - Local /uploads/ files must be uploaded to fal.ai storage first
+ * - Prompt must describe a CINEMATIC SCENE not a portrait
+ * - aspectRatio = "9:16" always (TikTok format)
+ * - mode "edit" = uses reference images
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -16,25 +17,58 @@ import path from "path";
 
 const NANOBANA_BASE = "https://nanophoto.ai/api/nano-banana-pro";
 
-async function imageToPublicUrl(imageUrl: string): Promise<string | null> {
+// Upload local file to fal.ai CDN → get public URL
+async function localFileToPublicUrl(localPath: string, falKey: string): Promise<string | null> {
   try {
-    // External URL — use directly (required by Nano Banana API — no base64 support)
-    if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
-      return imageUrl;
+    const filePath = path.join(process.cwd(), "public", localPath);
+    const buffer = await readFile(filePath);
+    const ext = localPath.split(".").pop()?.toLowerCase() || "jpg";
+    const mimeType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+    const filename = `char-ref-${Date.now()}.${ext}`;
+
+    const blob = new Blob([buffer], { type: mimeType });
+    const formData = new FormData();
+    formData.append("file", blob, filename);
+
+    const res = await fetch("https://fal.run/fal-ai/storage/upload", {
+      method: "POST",
+      headers: { "Authorization": `Key ${falKey}` },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      console.error("Fal storage upload failed:", res.status, await res.text());
+      return null;
     }
-    // Local file — we need to upload it or use a data URI
-    // Nano Banana only accepts public URLs, not base64
-    // For local files, return null (will skip that reference)
-    // TODO: when deployed, use the public URL instead
-    return null;
-  } catch {
+    const data = await res.json();
+    return data.url || null;
+  } catch (e) {
+    console.error("localFileToPublicUrl error:", e);
     return null;
   }
 }
 
-async function pollStatus(apiKey: string, generationId: string, maxAttempts = 20): Promise<string | null> {
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(r => setTimeout(r, 4000)); // wait 4s between polls
+// Get a public URL for any image (local or external)
+async function getPublicUrl(imageUrl: string, falKey: string): Promise<string | null> {
+  if (!imageUrl) return null;
+
+  // Already public URL
+  if (imageUrl.startsWith("https://") || imageUrl.startsWith("http://")) {
+    return imageUrl;
+  }
+
+  // Local file — upload to fal.ai storage to get public URL
+  if (imageUrl.startsWith("/")) {
+    return await localFileToPublicUrl(imageUrl, falKey);
+  }
+
+  return null;
+}
+
+// Poll until completed
+async function pollStatus(apiKey: string, generationId: string): Promise<string | null> {
+  for (let i = 0; i < 25; i++) {
+    await new Promise(r => setTimeout(r, 4000));
 
     const res = await fetch(`${NANOBANA_BASE}/check-status`, {
       method: "POST",
@@ -54,11 +88,10 @@ async function pollStatus(apiKey: string, generationId: string, maxAttempts = 20
       return data.imageUrl || data.data?.imageUrl || data.result?.imageUrl || null;
     }
     if (status === "failed" || status === "error") {
-      throw new Error(`Nano Banana generation failed: ${JSON.stringify(data)}`);
+      throw new Error(`Génération échouée: ${JSON.stringify(data).slice(0, 200)}`);
     }
-    // Still pending/generating — continue polling
   }
-  throw new Error("Nano Banana timeout — génération trop longue");
+  throw new Error("Timeout — génération trop longue (>100s)");
 }
 
 export async function POST(req: NextRequest) {
@@ -66,10 +99,17 @@ export async function POST(req: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const apiKey = process.env.NANOBANA_API_KEY;
-    if (!apiKey) {
+    const nanoBanaKey = process.env.NANOBANA_API_KEY;
+    if (!nanoBanaKey) {
       return NextResponse.json({
-        error: "NANOBANA_API_KEY manquante — ajoutez votre clé Nano Banana Pro dans Paramètres"
+        error: "NANOBANA_API_KEY manquante — ajoutez-la dans Paramètres → Nano Banana 🍌"
+      }, { status: 400 });
+    }
+
+    const falKey = process.env.FAL_API_KEY;
+    if (!falKey) {
+      return NextResponse.json({
+        error: "FAL_API_KEY requise pour uploader les photos de référence"
       }, { status: 400 });
     }
 
@@ -89,65 +129,81 @@ export async function POST(req: NextRequest) {
     if (!scene) return NextResponse.json({ error: "Scène non trouvée" }, { status: 404 });
 
     const { series } = scene.episode;
-    const format = scene.episode.format;
 
-    // Get characters in this scene
+    // ALWAYS use 9:16 for TikTok/Reels
+    const aspectRatio = "9:16";
+
+    // Get characters in this scene with their photos
     const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
     const presentChars = series.characters.filter(c =>
       sceneCharNames.some(sc => sc.toLowerCase().includes(c.name.toLowerCase()))
     );
+    const charsWithPhoto = presentChars.filter(c => c.referenceImageUrl);
 
-    // Get environment
+    // Upload all reference photos to get public URLs
+    const inputImageUrls: string[] = [];
+    const uploadedChars: string[] = [];
+
+    for (const char of charsWithPhoto) {
+      if (inputImageUrls.length >= 7) break; // keep 1 slot for environment
+      const url = await getPublicUrl(char.referenceImageUrl!, falKey);
+      if (url) {
+        inputImageUrls.push(url);
+        uploadedChars.push(char.name);
+      }
+    }
+
+    // Add environment reference if available
     const matchedEnv = series.environments.find(e =>
       scene.location?.toLowerCase().includes(e.name.toLowerCase())
     ) || series.environments[0];
 
-    // Collect reference image URLs (max 8 for Nano Banana Pro)
-    // Priority: character reference photos first, then environment
-    const inputImageUrls: string[] = [];
-
-    for (const char of presentChars) {
-      if (char.referenceImageUrl && inputImageUrls.length < 7) {
-        const url = await imageToPublicUrl(char.referenceImageUrl);
-        if (url) inputImageUrls.push(url);
-      }
-    }
-
-    const envPreviewUrl = (matchedEnv as typeof matchedEnv & { previewImageUrl?: string | null })?.previewImageUrl;
-    if (envPreviewUrl && inputImageUrls.length < 8) {
-      const url = await imageToPublicUrl(envPreviewUrl);
+    const envPreview = (matchedEnv as typeof matchedEnv & { previewImageUrl?: string | null })?.previewImageUrl;
+    if (envPreview && inputImageUrls.length < 8) {
+      const url = await getPublicUrl(envPreview, falKey);
       if (url) inputImageUrls.push(url);
     }
 
-    // Build the prompt — ultra detailed for Nano Banana Pro
+    // Build CINEMATIC SCENE prompt — not a portrait
     const envDesc = matchedEnv
-      ? `${matchedEnv.name}: ${matchedEnv.description}${matchedEnv.lighting ? `. ${matchedEnv.lighting}` : ""}${matchedEnv.mood ? `. Mood: ${matchedEnv.mood}` : ""}`
-      : scene.location || "outdoor scene";
+      ? `${matchedEnv.name} — ${matchedEnv.description}${matchedEnv.lighting ? `. Lighting: ${matchedEnv.lighting}` : ""}${matchedEnv.mood ? `. Mood: ${matchedEnv.mood}` : ""}`
+      : scene.location || "outdoor location";
 
-    const charDesc = presentChars.map(c => {
+    // Character descriptions from DNA or text
+    const charLines = presentChars.map(c => {
       const dna = c.visualDNA ? (() => { try { return JSON.parse(c.visualDNA!); } catch { return null; } })() : null;
-      if (dna?.lockedPrompt) return `${c.name}: ${dna.lockedPrompt}`;
-      return `${c.name}: ${c.physicalDescription}. Outfit: ${c.outfit}.`;
+      const photoNote = charsWithPhoto.some(ch => ch.id === c.id) ? " [REPRODUCE EXACT FACE FROM REFERENCE PHOTO]" : "";
+      if (dna?.lockedPrompt) return `${c.name}${photoNote}: ${dna.lockedPrompt}`;
+      return `${c.name}${photoNote}: ${c.physicalDescription}. Outfit: ${c.outfit}.`;
     }).join("\n");
 
-    const prompt = `${series.visualStyle} animated scene, ${format} format.
+    // CINEMATIC PROMPT — emphasis on scene action, movement, environment
+    const prompt = `${series.visualStyle}, vertical 9:16 portrait format, cinematic animated scene.
 
-CHARACTERS (maintain exact appearance from reference photos):
-${charDesc}
+SCENE ACTION: ${scene.action || "dramatic cinematic moment with character movement"}
 
-LOCATION: ${envDesc}
+SETTING: ${envDesc}
 
-ACTION: ${scene.action || "dramatic moment"}
-EMOTION: ${scene.emotion || "neutral"}
-CAMERA: ${scene.camera || "medium shot"}
+CHARACTERS IN THIS SCENE (reproduce exact appearance from reference photos):
+${charLines}
 
-Style requirements: ${series.visualStyle}, cinematic lighting, high quality animation render, same character visual identity as reference images. Ultra detailed. High quality.`;
+CAMERA: ${scene.camera || "dynamic medium shot with slight motion blur"}
+EMOTION/ATMOSPHERE: ${scene.emotion || "intense, dramatic"}
+LIGHTING: ${matchedEnv?.lighting || "cinematic dramatic lighting"}
+
+COMPOSITION RULES:
+- Vertical 9:16 format, full scene composition
+- Characters in action, NOT posing for portrait
+- Characters are INSIDE the scene environment, not on white background
+- Show environment context (floor, sky, surroundings)
+- Dynamic pose, movement, gestures matching the scene action
+- ${series.visualStyle} quality: cinematic, detailed, expressive
+- Same character appearance as reference photos provided
+
+STYLE: ${series.visualStyle}, high quality animation render, vibrant colors, professional composition`;
 
     const mode = inputImageUrls.length > 0 ? "edit" : "generate";
-    // Force 9:16 for TikTok/Reels format by default, unless episode is explicitly 16:9
-    const aspectRatio = format === "16:9" ? "16:9" : "9:16";
 
-    // Step 1: Submit generation
     const body: Record<string, unknown> = {
       prompt: prompt.slice(0, 1500),
       mode,
@@ -159,36 +215,36 @@ Style requirements: ${series.visualStyle}, cinematic lighting, high quality anim
       body.inputImageUrls = inputImageUrls;
     }
 
+    // Submit to Nano Banana Pro
     const genRes = await fetch(`${NANOBANA_BASE}/generate`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
+        "Authorization": `Bearer ${nanoBanaKey}`,
       },
       body: JSON.stringify(body),
     });
 
     if (!genRes.ok) {
       const err = await genRes.text();
-      throw new Error(`Nano Banana Pro erreur ${genRes.status}: ${err.slice(0, 300)}`);
+      throw new Error(`Nano Banana Pro ${genRes.status}: ${err.slice(0, 400)}`);
     }
 
     const genData = await genRes.json();
     const generationId = genData.generationId || genData.data?.generationId;
 
     if (!generationId) {
-      throw new Error(`Nano Banana Pro: pas de generationId — ${JSON.stringify(genData).slice(0, 200)}`);
+      throw new Error(`Pas de generationId: ${JSON.stringify(genData).slice(0, 200)}`);
     }
 
-    // Step 2: Poll for result
-    const imageUrl = await pollStatus(apiKey, generationId);
+    // Poll for result
+    const imageUrl = await pollStatus(nanoBanaKey, generationId);
+    if (!imageUrl) throw new Error("Pas d'image dans le résultat");
 
-    if (!imageUrl) throw new Error("Nano Banana Pro: pas d'image dans le résultat");
-
-    // Save history
+    // Save to history
     const currentScene = await prisma.scene.findUnique({
       where: { id: sceneId },
-      select: { imageUrl: true, imageHistory: true }
+      select: { imageUrl: true, imageHistory: true },
     });
     let history: Array<{ url: string; generator: string; createdAt: string }> = [];
     try { history = JSON.parse(currentScene?.imageHistory || "[]"); } catch {}
@@ -207,8 +263,9 @@ Style requirements: ${series.visualStyle}, cinematic lighting, high quality anim
       sceneId,
       generator: "Nano Banana Pro",
       mode,
-      refImagesUsed: presentChars.filter(c => c.referenceImageUrl).map(c => c.name),
-      inputImageCount: inputImageUrls.length,
+      referencesUploaded: uploadedChars,
+      totalRefs: inputImageUrls.length,
+      charsWithoutPhoto: presentChars.filter(c => !charsWithPhoto.some(cp => cp.id === c.id)).map(c => c.name),
     });
 
   } catch (error) {
