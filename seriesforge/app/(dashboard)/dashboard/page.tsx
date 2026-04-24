@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { Plus, Tv2, Film, Sparkles, Zap, ArrowRight, Loader2 } from "lucide-react";
+import { Plus, Tv2, Film, Sparkles, Zap, ArrowRight, Loader2, RotateCcw } from "lucide-react";
 
 interface Series {
   id: string;
@@ -21,6 +21,7 @@ export default function DashboardPage() {
   const [series, setSeries] = useState<Series[]>([]);
   const [loading, setLoading] = useState(true);
   const [demoLoading, setDemoLoading] = useState(false);
+  const [starterLoading, setStarterLoading] = useState(false);
 
   useEffect(() => {
     fetchSeries();
@@ -54,6 +55,26 @@ export default function DashboardPage() {
       toast.error(err instanceof Error ? err.message : "Demo failed");
     } finally {
       setDemoLoading(false);
+    }
+  }
+
+  async function restoreKonantaStarter() {
+    setStarterLoading(true);
+    const t = toast.loading("Restauration de Konanta avec personnages et épisodes...");
+    try {
+      const res = await fetch("/api/demo/konanta-starter", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.dismiss(t);
+      toast.success(
+        `✅ Série restaurée : ${data.characterCount} personnages et ${data.episodeCount} épisodes prêts`
+      );
+      router.push(`/series/${data.seriesId}`);
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Restauration impossible");
+    } finally {
+      setStarterLoading(false);
     }
   }
 
@@ -95,32 +116,47 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Konanta Demo Banner */}
+      {/* Konanta Starter Banner */}
       <div className="mb-8 relative overflow-hidden bg-gradient-to-r from-purple-900/40 via-blue-900/30 to-purple-900/40 border border-purple-500/30 rounded-2xl p-6">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 to-blue-600/10" />
-        <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="relative flex flex-col lg:flex-row items-start lg:items-center justify-between gap-5">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <Zap className="w-5 h-5 text-yellow-400" />
-              <span className="text-yellow-400 font-semibold text-sm">DEMO</span>
+              <RotateCcw className="w-5 h-5 text-blue-300" />
+              <span className="text-blue-300 font-semibold text-sm">PRESET</span>
             </div>
-            <h2 className="text-xl font-bold text-white">Générer le Démo Konanta</h2>
+            <h2 className="text-xl font-bold text-white">Remettre mes personnages et épisodes Konanta</h2>
             <p className="text-gray-300 text-sm mt-1">
-              Pipeline complet : 5 personnages · 8 scènes · narration · storyboard · plan audio · contrôle qualité
+              Restaure une série prête à éditer avec 5 personnages, 3 épisodes et les décors déjà configurés.
             </p>
-            <p className="text-gray-400 text-xs mt-1">Series: &quot;Les Marseillais à Konanta&quot; — Pixar 3D Reality TV</p>
+            <p className="text-gray-400 text-xs mt-1">
+              Série : &quot;Les Marseillais à Konanta&quot; — Pixar 3D Reality TV
+            </p>
           </div>
-          <button
-            onClick={generateKonantaDemo}
-            disabled={demoLoading}
-            className="flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all duration-200 whitespace-nowrap glow-purple"
-          >
-            {demoLoading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Génération...</>
-            ) : (
-              <><Sparkles className="w-4 h-4" /> Générer le Démo</>
-            )}
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto">
+            <button
+              onClick={restoreKonantaStarter}
+              disabled={starterLoading}
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all duration-200 whitespace-nowrap"
+            >
+              {starterLoading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Restauration...</>
+              ) : (
+                <><RotateCcw className="w-4 h-4" /> Restaurer la série</>
+              )}
+            </button>
+            <button
+              onClick={generateKonantaDemo}
+              disabled={demoLoading}
+              className="flex items-center justify-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all duration-200 whitespace-nowrap glow-purple"
+            >
+              {demoLoading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Génération...</>
+              ) : (
+                <><Sparkles className="w-4 h-4" /> Démo IA complète</>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
