@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Film, LayoutDashboard, Tv2, Library, LogOut, Menu, X } from "lucide-react";
+import { Film, LayoutDashboard, Tv2, Library, LogOut, Menu, X, Settings } from "lucide-react";
 import { useState } from "react";
 import toast from "react-hot-toast";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/series", label: "My Series", icon: Tv2 },
-  { href: "/library", label: "Library", icon: Library },
+  { href: "/series", label: "Mes Séries", icon: Tv2 },
+  { href: "/library", label: "Bibliothèque", icon: Library },
+  { href: "/settings", label: "Clés API", icon: Settings },
 ];
 
 export default function Navbar() {
