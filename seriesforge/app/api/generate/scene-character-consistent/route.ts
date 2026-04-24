@@ -9,7 +9,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { readFile } from "fs/promises";
 import path from "path";
-import { executeNanoBananaSceneGeneration } from "@/lib/imageWorkflows/nanoBanana";
+import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
 
 type SeriesCharacter = {
   id: string;
@@ -130,11 +130,11 @@ export async function POST(req: NextRequest) {
     const charsWithPhoto = presentChars.filter((c: SeriesCharacter) => c.referenceImageUrl);
 
     if (presentChars.length > 1) {
-      return NextResponse.json(await executeNanoBananaSceneGeneration({
+      return NextResponse.json(await generateSceneWithNanoBanana({
         sceneId,
         userId: user.id,
         model: "nano-banana-pro",
-        fallbackReason: "auto-routed-from-single-reference-route",
+        autoRouted: true,
       }));
     }
 

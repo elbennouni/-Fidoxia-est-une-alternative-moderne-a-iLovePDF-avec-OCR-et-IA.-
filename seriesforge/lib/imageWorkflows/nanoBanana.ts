@@ -29,6 +29,7 @@ export interface NanoBananaResult {
   totalRefs: number;
   charsWithoutPhoto: string[];
   charsMissingValidRef: string[];
+  environmentName?: string;
   autoRouted?: boolean;
 }
 
@@ -242,10 +243,52 @@ STYLE: ${series.visualStyle}, high quality animation render, vibrant colors, pro
     mode,
     referencesUploaded: uploadedChars,
     totalRefs: inputImageUrls.length,
+    environmentName: matchedEnv?.name,
     charsWithoutPhoto: presentChars
       .filter((c: SceneCharacter) => !charsWithPhoto.some((cp: SceneCharacter) => cp.id === c.id))
       .map((c: SceneCharacter) => c.name),
     charsMissingValidRef: missingCharacterRefs,
     autoRouted,
   };
+}
+
+export async function validateNanoBananaAutoRoute(params: {
+  scene: {
+    action?: string | null;
+    camera?: string | null;
+    emotion?: string | null;
+    location?: string | null;
+    charactersJson?: string | null;
+  };
+  series: {
+    characters: SceneCharacter[];
+    environments: SceneEnvironment[];
+  };
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const sceneCharNames: string[] = JSON.parse(params.scene.charactersJson || "[]");
+  const presentChars = params.series.characters.filter((character) =>
+    sceneCharNames.some((name: string) => name.toLowerCase().includes(character.name.toLowerCase()))
+  );
+
+  if (presentChars.length <= 1) return { ok: true };
+
+  const validRefs: string[] = [];
+  for (const char of presentChars) {
+    if (!char.referenceImageUrl) continue;
+    const url = await getPublicUrl(char.referenceImageUrl);
+    if (url) validRefs.push(char.name);
+  }
+
+  const missing = presentChars
+    .filter((char) => !validRefs.includes(char.name))
+    .map((char) => char.name);
+
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      error: `Nano Banana nécessite une photo valide pour chaque personnage. Manquantes: ${missing.join(", ")}`,
+    };
+  }
+
+  return { ok: true };
 }

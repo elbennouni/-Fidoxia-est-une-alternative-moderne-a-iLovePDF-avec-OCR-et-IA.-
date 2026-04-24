@@ -10,20 +10,17 @@ import {
   CheckCircle,
   Loader2,
   Copy,
-  Sparkles,
   Clock,
   RefreshCw,
   ChevronDown,
   ChevronUp,
   Eye,
-  Dna,
   Users,
   MapPin,
   Mic,
   X,
 } from "lucide-react";
-import { CostBadge } from "@/components/ui/CostBadge";
-import { IMAGE_GENERATORS, type ImageGenerator } from "@/lib/generators";
+import { IMAGE_GENERATORS } from "@/lib/generators";
 
 interface ImageHistoryEntry {
   url: string;
@@ -105,7 +102,6 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
   const { id } = use(params);
   const router = useRouter();
   const [episodeTitle, setEpisodeTitle] = useState("");
-  const [episodeFormat, setEpisodeFormat] = useState("9:16");
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [characters, setCharacters] = useState<CharacterRef[]>([]);
   const [environments, setEnvironments] = useState<EnvironmentRef[]>([]);
@@ -124,7 +120,6 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
       if (res.status === 401) { router.push("/login"); return; }
       const data = await res.json() as EpisodePayload;
       setEpisodeTitle(data.title);
-      setEpisodeFormat(data.format || "9:16");
       setScenes(data.scenes || []);
       setCharacters(data.series?.characters || []);
       setEnvironments(data.series?.environments || []);
@@ -245,7 +240,7 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
 
       <div className="mb-6">
         <Link href={`/episodes/${id}/editor`} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-4 transition-colors w-fit">
-          <ArrowLeft className="w-4 h-4" /> Retour à l'éditeur
+          <ArrowLeft className="w-4 h-4" /> Retour à l&apos;éditeur
         </Link>
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
@@ -268,9 +263,9 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
       ) : scenes.length === 0 ? (
         <div className="text-center py-16 bg-[#13131a] border border-dashed border-[#2a2a3e] rounded-2xl">
           <Image className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-400">Lancez d'abord le pipeline de l'épisode pour générer le storyboard</p>
+          <p className="text-gray-400">Lancez d&apos;abord le pipeline de l&apos;épisode pour générer le storyboard</p>
           <Link href={`/episodes/${id}/editor`} className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-all">
-            Aller à l'éditeur
+            Aller à l&apos;éditeur
           </Link>
         </div>
       ) : (
@@ -335,7 +330,7 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
                             className="w-14 h-14 rounded-lg overflow-hidden border border-white/10 bg-black/70 flex-shrink-0"
                             title={entry.generator}
                           >
-                            <img src={entry.url} alt={`history-${idx}`} className="w-full h-full object-cover" />
+                    <img src={entry.url} alt={`Historique ${idx + 1}`} className="w-full h-full object-cover" />
                           </button>
                         ))}
                       </div>
@@ -632,16 +627,16 @@ function HistoryModal({
           {scene.imageUrl && (
             <div className="mb-5">
               <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Image actuelle</p>
-              <img src={scene.imageUrl} alt="current" className="w-full max-h-72 object-contain rounded-xl border border-green-600/20 bg-[#1e1e2e]" />
+              <img src={scene.imageUrl} alt="Image actuelle" className="w-full max-h-72 object-contain rounded-xl border border-green-600/20 bg-[#1e1e2e]" />
             </div>
           )}
           {history.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">Pas encore d'historique</div>
+            <div className="text-center py-12 text-gray-500">Pas encore d&apos;historique</div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {history.map((entry, idx) => (
                 <div key={`${entry.url}-${idx}`} className="rounded-xl overflow-hidden border border-[#2a2a3e] bg-[#1e1e2e]">
-                  <img src={entry.url} alt={`history-${idx}`} className="w-full aspect-video object-cover" />
+                  <img src={entry.url} alt={`Historique ${idx + 1}`} className="w-full aspect-video object-cover" />
                   <div className="p-3">
                     <p className="text-sm text-white truncate">{entry.generator}</p>
                     <p className="text-xs text-gray-500 mt-1">

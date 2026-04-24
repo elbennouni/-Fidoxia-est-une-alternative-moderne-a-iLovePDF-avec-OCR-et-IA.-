@@ -4,7 +4,7 @@ import Replicate from "replicate";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { IMAGE_GENERATORS } from "@/lib/generators";
-import { buildNanoBananaPayload } from "@/lib/imageWorkflows/nanoBanana";
+import { validateNanoBananaAutoRoute } from "@/lib/imageWorkflows/nanoBanana";
 import { readFile } from "fs/promises";
 import path from "path";
 
@@ -104,12 +104,11 @@ export async function POST(req: NextRequest) {
     const multiCharacterScene = presentChars.length > 1;
 
     if (multiCharacterScene) {
-      const nanoPayload = await buildNanoBananaPayload({
+      const nanoPayload = await validateNanoBananaAutoRoute({
         scene: {
-          id: scene.id,
           action: scene.action,
-          emotion: scene.emotion,
           camera: scene.camera,
+          emotion: scene.emotion,
           location: scene.location,
           charactersJson: scene.charactersJson,
         },

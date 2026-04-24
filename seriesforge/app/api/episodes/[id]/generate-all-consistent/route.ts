@@ -113,7 +113,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           const nanoResult = await generateSceneWithNanoBanana({
             sceneId: scene.id,
             userId: user.id,
-            preferredModel: "nano-banana-pro",
+            model: "nano-banana-pro",
           });
           results.push({
             sceneNumber: scene.sceneNumber,

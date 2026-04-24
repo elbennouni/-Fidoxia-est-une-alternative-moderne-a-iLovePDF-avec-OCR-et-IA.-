@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { runNanoBananaWorkflow } from "@/lib/imageWorkflows/nanoBanana";
+import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -42,16 +42,14 @@ export async function POST(req: NextRequest) {
     const charsWithPhoto = presentChars.filter((c: typeof presentChars[number]) => c.referenceImageUrl);
 
     if (presentChars.length > 1) {
-      const multiCharacterResult = await runNanoBananaWorkflow({
+      const multiCharacterResult = await generateSceneWithNanoBanana({
         userId: user.id,
         sceneId,
-        preferredModel: "nano-banana-pro",
+        model: "nano-banana-pro",
+        autoRouted: true,
       });
-      if (!multiCharacterResult.success) {
-        return NextResponse.json({ error: multiCharacterResult.error }, { status: multiCharacterResult.statusCode || 400 });
-      }
       return NextResponse.json({
-        ...multiCharacterResult.response,
+        ...multiCharacterResult,
         autoRoutedToNanoBanana: true,
       });
     }

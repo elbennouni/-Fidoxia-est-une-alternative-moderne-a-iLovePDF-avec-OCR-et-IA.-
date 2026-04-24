@@ -51,7 +51,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             imageUrl: nanoResult.imageUrl,
             generator: nanoResult.generator,
             characters: presentChars.map((c: typeof presentChars[number]) => c.name),
-            environment: nanoResult.environmentName,
+            environment: scene.location || null,
           });
           continue;
         }

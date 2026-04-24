@@ -19,15 +19,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     if (!episode) return NextResponse.json({ error: "Episode not found" }, { status: 404 });
 
-    const scenes = episode.scenes.map((scene) => {
+    const scenes = episode.scenes.map((scene: typeof episode.scenes[number]) => {
       let sceneCharacters: string[] = [];
       let imageHistory: Array<{ url: string; generator: string; createdAt: string }> = [];
       try { sceneCharacters = JSON.parse(scene.charactersJson || "[]"); } catch {}
       try { imageHistory = JSON.parse(scene.imageHistory || "[]"); } catch {}
 
       const characterRefs = episode.series.characters
-        .filter((character) => sceneCharacters.some((name) => name.toLowerCase().includes(character.name.toLowerCase())))
-        .map((character) => ({
+        .filter((character: typeof episode.series.characters[number]) => sceneCharacters.some((name) => name.toLowerCase().includes(character.name.toLowerCase())))
+        .map((character: typeof episode.series.characters[number]) => ({
           id: character.id,
           name: character.name,
           referenceImageUrl: character.referenceImageUrl,
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
           outfit: character.outfit,
         }));
 
-      const matchedEnvironment = episode.series.environments.find((environment) =>
+      const matchedEnvironment = episode.series.environments.find((environment: typeof episode.series.environments[number]) =>
         scene.location?.toLowerCase().includes(environment.name.toLowerCase())
       ) || episode.series.environments[0] || null;
 
