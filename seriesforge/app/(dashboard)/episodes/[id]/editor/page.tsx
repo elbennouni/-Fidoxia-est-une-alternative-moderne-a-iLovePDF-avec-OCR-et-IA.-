@@ -10,6 +10,8 @@ import {
 } from "lucide-react";
 import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
+import { ImageGeneratorPicker, VideoGeneratorPicker } from "@/components/ui/GeneratorPicker";
+import { IMAGE_GENERATORS, VIDEO_GENERATORS, getDefaultImageGenerator, setDefaultImageGenerator, getDefaultVideoGenerator, setDefaultVideoGenerator } from "@/lib/generators";
 
 interface Scene {
   id: string;
@@ -54,6 +56,11 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
   const [generatingAllImages, setGeneratingAllImages] = useState(false);
   const [generatingSceneImage, setGeneratingSceneImage] = useState<string | null>(null);
   const [expandedScene, setExpandedScene] = useState<string | null>(null);
+  const [selectedImgGen, setSelectedImgGen] = useState(() => typeof window !== "undefined" ? getDefaultImageGenerator() : "dalle3-hd");
+  const [defaultImgGen, setDefaultImgGen] = useState(() => typeof window !== "undefined" ? getDefaultImageGenerator() : "dalle3-hd");
+  const [selectedVidGen, setSelectedVidGen] = useState(() => typeof window !== "undefined" ? getDefaultVideoGenerator() : "kling-15-std");
+  const [defaultVidGen, setDefaultVidGen] = useState(() => typeof window !== "undefined" ? getDefaultVideoGenerator() : "kling-15-std");
+  const [showGenPicker, setShowGenPicker] = useState(false);
 
   useEffect(() => { fetchEpisode(); }, [id]);
 
@@ -87,23 +94,36 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  function handleSetDefaultImgGen(id: string) {
+    setDefaultImgGen(id);
+    setDefaultImageGenerator(id);
+    toast.success(`${IMAGE_GENERATORS.find(g => g.id === id)?.name} défini par défaut`);
+  }
+
+  function handleSetDefaultVidGen(id: string) {
+    setDefaultVidGen(id);
+    setDefaultVideoGenerator(id);
+    toast.success(`${VIDEO_GENERATORS.find(g => g.id === id)?.name} défini par défaut`);
+  }
+
   async function generateSceneImage(scene: Scene) {
     setGeneratingSceneImage(scene.id);
-    const t = toast.loading(`Génération image scène ${scene.sceneNumber} (ADN Pixar)...`);
+    const gen = IMAGE_GENERATORS.find(g => g.id === selectedImgGen);
+    const t = toast.loading(`Génération scène ${scene.sceneNumber} avec ${gen?.name || "DALL-E 3"}...`);
     try {
-      // Use consistent scene generation with visual DNA
-      const res = await fetch("/api/generate/scene-consistent", {
+      const res = await fetch("/api/generate/scene-with-generator", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sceneId: scene.id }),
+        body: JSON.stringify({ sceneId: scene.id, generatorId: selectedImgGen }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.dismiss(t);
+      const refInfo = data.refImagesUsed?.length > 0 ? ` (refs: ${data.refImagesUsed.join(", ")})` : "";
       if (data.missingDNA?.length > 0) {
-        toast(`Image générée — mais ${data.missingDNA.join(", ")} n'ont pas d'ADN visuel. Allez dans Personnages pour générer leur ADN.`, { icon: "⚠️", duration: 6000 });
+        toast(`Image générée${refInfo} — ${data.missingDNA.join(", ")} sans ADN visuel. Générez l'ADN dans Personnages.`, { icon: "⚠️", duration: 6000 });
       } else {
-        toast.success(`Image scène ${scene.sceneNumber} générée avec cohérence Pixar !`);
+        toast.success(`Image scène ${scene.sceneNumber} générée !${refInfo}`);
       }
       fetchEpisode();
     } catch (err) {
@@ -258,6 +278,43 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
+      {/* Generator Selector */}
+      <div className="mb-6 bg-[#13131a] border border-[#2a2a3e] rounded-xl overflow-hidden">
+        <button
+          onClick={() => setShowGenPicker(!showGenPicker)}
+          className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-all"
+        >
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-sm font-semibold text-white">Générateurs</span>
+            <span className="text-xs px-2 py-1 bg-purple-600/20 border border-purple-600/30 rounded-full text-purple-300">
+              🖼 {IMAGE_GENERATORS.find(g => g.id === selectedImgGen)?.name}
+              <span className="text-yellow-400/70 ml-1 font-mono">~${IMAGE_GENERATORS.find(g => g.id === selectedImgGen)?.pricePerImage.toFixed(3)}</span>
+            </span>
+            <span className="text-xs px-2 py-1 bg-green-600/20 border border-green-600/30 rounded-full text-green-300">
+              🎬 {VIDEO_GENERATORS.find(g => g.id === selectedVidGen)?.name}
+              <span className="text-yellow-400/70 ml-1 font-mono">~${VIDEO_GENERATORS.find(g => g.id === selectedVidGen)?.pricePer5s.toFixed(2)}/5s</span>
+            </span>
+          </div>
+          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ${showGenPicker ? "rotate-180" : ""}`} />
+        </button>
+        {showGenPicker && (
+          <div className="border-t border-[#2a2a3e] p-4 grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <ImageGeneratorPicker
+              selected={selectedImgGen}
+              onSelect={setSelectedImgGen}
+              onSetDefault={handleSetDefaultImgGen}
+              defaultId={defaultImgGen}
+            />
+            <VideoGeneratorPicker
+              selected={selectedVidGen}
+              onSelect={setSelectedVidGen}
+              onSetDefault={handleSetDefaultVidGen}
+              defaultId={defaultVidGen}
+            />
+          </div>
+        )}
+      </div>
+
       {/* Scenes */}
       {episode.scenes.length === 0 ? (
         <div className="text-center py-16 bg-[#13131a] border border-dashed border-[#2a2a3e] rounded-2xl">
@@ -342,10 +399,11 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
                             className="w-full flex items-center justify-center gap-2 py-2 bg-purple-600/20 hover:bg-purple-600/40 border border-purple-600/30 text-purple-300 text-sm rounded-xl transition-all disabled:opacity-50"
                           >
                             {generatingSceneImage === scene.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-                            {scene.imageUrl ? "Regénérer" : "Générer DALL-E"}
+                            {scene.imageUrl ? "Regénérer" : "Générer"}
                           </button>
-                          <div className="flex justify-center">
-                            <CostBadge cost={episode.format === "9:16" ? COSTS["dalle3-standard-portrait"] : COSTS["dalle3-standard-landscape"]} label="img" />
+                          <div className="flex justify-center items-center gap-1.5">
+                            <span className="text-xs text-gray-500 truncate max-w-[80px]">{IMAGE_GENERATORS.find(g => g.id === selectedImgGen)?.name.split(" ")[0]}</span>
+                            <CostBadge cost={IMAGE_GENERATORS.find(g => g.id === selectedImgGen)?.pricePerImage || 0.08} label="img" />
                           </div>
                         </div>
                       </div>

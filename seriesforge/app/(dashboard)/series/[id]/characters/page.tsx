@@ -4,7 +4,7 @@ import { useState, useEffect, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { ArrowLeft, Plus, Users, X, Loader2, ShieldCheck, Sparkles, Upload, Mic, FileJson, Trash2, AlertTriangle, Play, Square, Dna, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Plus, Users, X, Loader2, ShieldCheck, Sparkles, Upload, Mic, FileJson, Trash2, AlertTriangle, Play, Square, Dna, ChevronDown, ChevronUp, Eye } from "lucide-react";
 import { CostBadge } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
 
@@ -88,6 +88,32 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({ name: "", physicalDescription: "", outfit: "", personality: "", voiceProfile: "" });
+
+  async function analyzePhoto(char: Character) {
+    if (!char.referenceImageUrl) {
+      toast.error("Uploadez d'abord une photo de référence");
+      return;
+    }
+    setGeneratingDNA(char.id);
+    const t = toast.loading(`👁 GPT-4o Vision analyse la photo de ${char.name}...`);
+    try {
+      const res = await fetch("/api/generate/analyze-character-photo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ characterId: char.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.dismiss(t);
+      toast.success(`ADN extrait de la vraie photo de ${char.name} !`);
+      fetchData();
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Erreur analyse");
+    } finally {
+      setGeneratingDNA(null);
+    }
+  }
 
   async function generateDNA(char: Character) {
     setGeneratingDNA(char.id);
@@ -432,6 +458,26 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
 
                 {/* ADN Visuel */}
                 <div className="mb-3">
+                  {/* Analyze photo button if has image but no DNA */}
+                  {char.referenceImageUrl && !char.visualDNA && (
+                    <button
+                      onClick={() => analyzePhoto(char)}
+                      disabled={generatingDNA === char.id}
+                      className="flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50 mb-1.5"
+                    >
+                      {generatingDNA === char.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Eye className="w-3 h-3" />}
+                      GPT-4o Vision analyse la photo
+                    </button>
+                  )}
+                  {char.referenceImageUrl && char.visualDNA && (
+                    <button
+                      onClick={() => analyzePhoto(char)}
+                      disabled={generatingDNA === char.id}
+                      className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-blue-400 transition-colors disabled:opacity-50 mb-1.5"
+                    >
+                      <Eye className="w-3 h-3" /> Ré-analyser la photo
+                    </button>
+                  )}
                   {char.visualDNA ? (
                     <div>
                       <button
