@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { runNanoBananaWorkflow } from "@/lib/imageWorkflows/nanoBanana";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -41,14 +42,18 @@ export async function POST(req: NextRequest) {
     const charsWithPhoto = presentChars.filter((c: typeof presentChars[number]) => c.referenceImageUrl);
 
     if (presentChars.length > 1) {
+      const multiCharacterResult = await runNanoBananaWorkflow({
+        userId: user.id,
+        sceneId,
+        preferredModel: "nano-banana-pro",
+      });
+      if (!multiCharacterResult.success) {
+        return NextResponse.json({ error: multiCharacterResult.error }, { status: multiCharacterResult.statusCode || 400 });
+      }
       return NextResponse.json({
-        error: `Cette scene contient ${presentChars.length} personnages. DALL-E sans references multi-personnages risque de generer des visages aleatoires. Utilisez Nano Banana avec une photo par personnage.`,
-        blockedToSaveCredits: true,
-        recommendedGenerator: "nano-banana-pro",
-        charactersMissingPhoto: presentChars
-          .filter((c: typeof presentChars[number]) => !c.referenceImageUrl)
-          .map((c: typeof presentChars[number]) => c.name),
-      }, { status: 400 });
+        ...multiCharacterResult.response,
+        autoRoutedToNanoBanana: true,
+      });
     }
 
     // Get environment matching the scene location

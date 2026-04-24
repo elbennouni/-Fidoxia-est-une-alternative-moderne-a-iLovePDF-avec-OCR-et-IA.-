@@ -6,6 +6,7 @@ import { buildScenePromptWithDNA, generateVisualDNA } from "@/lib/agents/visualD
 import type { VisualDNA } from "@/lib/agents/visualDNAAgent";
 import { readFile } from "fs/promises";
 import path from "path";
+import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -109,11 +110,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         ).length;
 
         if (presentCharCount > 1) {
+          const nanoResult = await generateSceneWithNanoBanana({
+            sceneId: scene.id,
+            userId: user.id,
+            preferredModel: "nano-banana-pro",
+          });
           results.push({
             sceneNumber: scene.sceneNumber,
-            success: false,
-            skipped: true,
-            error: "Scène multi-personnages ignorée pour éviter une génération incohérente coûteuse. Utilisez Nano Banana avec photos de référence.",
+            success: true,
+            imageUrl: nanoResult.imageUrl,
+            generator: nanoResult.generator,
+            autoRouted: true,
           });
           continue;
         }

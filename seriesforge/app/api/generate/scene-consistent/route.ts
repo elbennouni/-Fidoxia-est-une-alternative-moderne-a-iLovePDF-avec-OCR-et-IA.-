@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { buildScenePromptWithDNA } from "@/lib/agents/visualDNAAgent";
 import type { VisualDNA } from "@/lib/agents/visualDNAAgent";
+import { runNanoBananaWorkflow } from "@/lib/imageWorkflows/nanoBanana";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -40,11 +41,16 @@ export async function POST(req: NextRequest) {
       sceneCharNames.some((n: string) => n.toLowerCase().includes(c.name.toLowerCase()))
     );
     if (presentChars.length > 1) {
+      const result = await runNanoBananaWorkflow({
+        sceneId,
+        userId: user.id,
+        model: "nano-banana-pro",
+      });
       return NextResponse.json({
-        error: "Scène multi-personnages détectée. Utilisez Nano Banana pour éviter des visages aléatoires et des dépenses inutiles.",
-        recommendedGenerator: "nano-banana-pro",
+        ...result,
+        autoRoutedToNanoBanana: true,
         characters: presentChars.map((c: typeof presentChars[number]) => c.name),
-      }, { status: 400 });
+      });
     }
 
     // Match environment

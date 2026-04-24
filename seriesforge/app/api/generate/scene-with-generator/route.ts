@@ -4,6 +4,7 @@ import Replicate from "replicate";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { IMAGE_GENERATORS } from "@/lib/generators";
+import { buildNanoBananaPayload } from "@/lib/imageWorkflows/nanoBanana";
 import { readFile } from "fs/promises";
 import path from "path";
 
@@ -101,6 +102,35 @@ export async function POST(req: NextRequest) {
       sceneCharNames.some((sc: string) => sc.toLowerCase().includes(c.name.toLowerCase()))
     );
     const multiCharacterScene = presentChars.length > 1;
+
+    if (multiCharacterScene) {
+      const nanoPayload = await buildNanoBananaPayload({
+        scene: {
+          id: scene.id,
+          action: scene.action,
+          emotion: scene.emotion,
+          camera: scene.camera,
+          location: scene.location,
+          charactersJson: scene.charactersJson,
+        },
+        series,
+      });
+
+      if (!nanoPayload.ok) {
+        return NextResponse.json({
+          error: nanoPayload.error,
+          recommendedGeneratorId: "nano-banana-pro",
+        }, { status: 400 });
+      }
+
+      return NextResponse.json({
+        error: "Scène multi-personnages détectée. Cette génération est automatiquement réservée à Nano Banana.",
+        autoRerouteTo: "nano-banana-pro",
+        nanoBananaReady: true,
+        recommendedGeneratorId: "nano-banana-pro",
+        presentCharacters: presentChars.map((c: typeof presentChars[number]) => c.name),
+      }, { status: 400 });
+    }
 
     if (multiCharacterScene && !generator.multiCharacterSafe) {
       return NextResponse.json({

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -39,9 +40,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           sceneCharNames.some((n: string) => n.toLowerCase().includes(c.name.toLowerCase()))
         );
         if (presentChars.length > 1) {
-          throw new Error(
-            `Scène ${scene.sceneNumber}: génération bloquée pour éviter une image incohérente et coûteuse. Utilisez Nano Banana pour ${presentChars.length} personnages.`
-          );
+          const nanoResult = await generateSceneWithNanoBanana({
+            sceneId: scene.id,
+            userId: user.id,
+            model: "nano-banana-pro",
+          });
+          results.push({
+            sceneNumber: scene.sceneNumber,
+            success: true,
+            imageUrl: nanoResult.imageUrl,
+            generator: nanoResult.generator,
+            characters: presentChars.map((c: typeof presentChars[number]) => c.name),
+            environment: nanoResult.environmentName,
+          });
+          continue;
         }
 
         // Match environment

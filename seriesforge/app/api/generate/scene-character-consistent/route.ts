@@ -9,6 +9,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { readFile } from "fs/promises";
 import path from "path";
+import { executeNanoBananaSceneGeneration } from "@/lib/imageWorkflows/nanoBanana";
 
 type SeriesCharacter = {
   id: string;
@@ -129,11 +130,12 @@ export async function POST(req: NextRequest) {
     const charsWithPhoto = presentChars.filter((c: SeriesCharacter) => c.referenceImageUrl);
 
     if (presentChars.length > 1) {
-      return NextResponse.json({
-        error: "Cette route n'accepte qu'un seul personnage de reference. Pour une scene avec plusieurs candidats, utilisez Nano Banana.",
-        sceneCharacters: presentChars.map((c: SeriesCharacter) => c.name),
-        recommendedGenerator: "nano-banana-pro",
-      }, { status: 400 });
+      return NextResponse.json(await executeNanoBananaSceneGeneration({
+        sceneId,
+        userId: user.id,
+        model: "nano-banana-pro",
+        fallbackReason: "auto-routed-from-single-reference-route",
+      }));
     }
 
     const matchedEnv = series.environments.find((e: SeriesEnvironment) =>
