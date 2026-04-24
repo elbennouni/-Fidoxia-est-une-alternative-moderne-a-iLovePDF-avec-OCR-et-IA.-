@@ -45,15 +45,16 @@ model Character {
 }
 
 model Environment {
-  id          String   @id @default(cuid())
-  seriesId    String
-  name        String
-  description String
-  lighting    String?
-  mood        String?
-  reusable    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  series      Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  id              String   @id @default(cuid())
+  seriesId        String
+  name            String
+  description     String
+  lighting        String?
+  mood            String?
+  reusable        Boolean  @default(true)
+  previewImageUrl String?
+  createdAt       DateTime @default(now())
+  series          Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
 }
 
 model Episode {

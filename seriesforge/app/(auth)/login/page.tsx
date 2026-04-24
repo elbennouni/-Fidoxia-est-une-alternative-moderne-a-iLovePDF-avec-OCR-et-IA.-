@@ -6,6 +6,8 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import { Film, Sparkles } from "lucide-react";
 
+// Force hard redirect to avoid tunnel cookie issues
+
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -24,7 +26,7 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Login failed");
       toast.success("Welcome back!");
-      router.push("/dashboard");
+      window.location.href = "/dashboard";
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Login failed");
     } finally {
