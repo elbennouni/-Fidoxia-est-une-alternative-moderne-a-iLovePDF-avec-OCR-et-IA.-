@@ -144,7 +144,8 @@ CAMERA: ${scene.camera || "medium shot"}
 Style requirements: ${series.visualStyle}, cinematic lighting, high quality animation render, same character visual identity as reference images. Ultra detailed. High quality.`;
 
     const mode = inputImageUrls.length > 0 ? "edit" : "generate";
-    const aspectRatio = format === "9:16" ? "9:16" : "16:9";
+    // Force 9:16 for TikTok/Reels format by default, unless episode is explicitly 16:9
+    const aspectRatio = format === "16:9" ? "16:9" : "9:16";
 
     // Step 1: Submit generation
     const body: Record<string, unknown> = {

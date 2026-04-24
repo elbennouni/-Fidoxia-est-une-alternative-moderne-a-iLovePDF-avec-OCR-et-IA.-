@@ -64,7 +64,8 @@ Camera: ${scene.camera || "medium shot"}.
 ${scene.imagePrompt ? `Style direction: ${scene.imagePrompt.slice(0, 300)}` : ""}
 Maintain exact character identity. Same outfits. Same physical appearance. High quality ${series.visualStyle}.`;
 
-        const size = episode.format === "9:16" ? "1024x1792" : "1792x1024";
+        const epFormat = episode.format === "16:9" ? "16:9" : "9:16";
+        const size = epFormat === "9:16" ? "1024x1792" : "1792x1024";
 
         const response = await openai.images.generate({
           model: "dall-e-3",

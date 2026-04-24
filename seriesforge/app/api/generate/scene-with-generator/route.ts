@@ -90,7 +90,8 @@ export async function POST(req: NextRequest) {
     if (!scene) return NextResponse.json({ error: "Scene not found" }, { status: 404 });
 
     const { series } = scene.episode;
-    const format = scene.episode.format;
+    // Default to 9:16 (TikTok/Reels) unless explicitly set to 16:9
+    const format = scene.episode.format === "16:9" ? "16:9" : "9:16";
     const generator = IMAGE_GENERATORS.find(g => g.id === (generatorId || "dalle3-hd")) || IMAGE_GENERATORS[0];
 
     const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");

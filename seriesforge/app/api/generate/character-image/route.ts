@@ -32,7 +32,7 @@ High quality, detailed, consistent character design, professional animation styl
       model: "dall-e-3",
       prompt,
       n: 1,
-      size: "1024x1024",
+      size: "1024x1792", // 9:16 portrait for character sheets
       quality: "standard",
     });
 

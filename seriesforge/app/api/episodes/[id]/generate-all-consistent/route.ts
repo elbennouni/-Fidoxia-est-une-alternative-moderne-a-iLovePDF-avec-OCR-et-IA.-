@@ -137,7 +137,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
       const prompt = photoDescriptions ? `${baseprompt}\n\nADDITIONAL CHARACTER PHOTO REFERENCES:${photoDescriptions}` : baseprompt;
 
-        const size = episode.format === "9:16" ? "1024x1792" : "1792x1024";
+        // Force 9:16 by default (TikTok/Reels)
+        const epFormat = episode.format === "16:9" ? "16:9" : "9:16";
+        const size = epFormat === "9:16" ? "1024x1792" : "1792x1024";
 
         const response = await openai.images.generate({
           model: "dall-e-3",

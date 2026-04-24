@@ -57,7 +57,8 @@ export async function POST(req: NextRequest) {
     if (!scene) return NextResponse.json({ error: "Scène non trouvée" }, { status: 404 });
 
     const { series } = scene.episode;
-    const format = scene.episode.format;
+    // Default to 9:16 (TikTok/Reels) unless explicitly set to 16:9
+    const format = scene.episode.format === "16:9" ? "16:9" : "9:16";
 
     // Get characters in this scene with their reference photos
     const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");

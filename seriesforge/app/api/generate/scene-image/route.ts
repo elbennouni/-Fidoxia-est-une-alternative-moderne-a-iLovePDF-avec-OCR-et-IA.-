@@ -73,7 +73,8 @@ Additional context: ${basePrompt.slice(0, 500)}
 
 Requirements: Maintain exact character visual identity as described. Same outfit, same physical appearance. No changes to character design. High quality ${series.visualStyle} animation style. Cinematic lighting and composition.`;
 
-    const size = format === "9:16" ? "1024x1792" : "1792x1024";
+    const epFormat = format === "16:9" ? "16:9" : "9:16"; // default 9:16
+    const size = epFormat === "9:16" ? "1024x1792" : "1792x1024";
 
     const response = await openai.images.generate({
       model: "dall-e-3",
