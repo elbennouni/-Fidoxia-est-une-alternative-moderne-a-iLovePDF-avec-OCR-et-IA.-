@@ -84,13 +84,17 @@ export async function POST(req: NextRequest) {
 
     // ─── KLING AI via Fal.ai ─────────────────────────────────────────
     if ((generatorId === "kling-15-std" || generatorId === "kling-15-pro") && falKey) {
-      generatorUsed = generatorId === "kling-15-pro" ? "Kling AI 1.5 Pro" : "Kling AI 1.5 Standard";
-      const model = generatorId === "kling-15-pro" ? "fal-ai/kling-video/v1.5/pro/image-to-video" : "fal-ai/kling-video/v1.5/standard/image-to-video";
+      // Use Kling 2.1 (latest) instead of 1.5
+      generatorUsed = generatorId === "kling-15-pro" ? "Kling AI 2.1 Pro" : "Kling AI 2.1 Standard";
+      const model = generatorId === "kling-15-pro"
+        ? "fal-ai/kling-video/v2.1/pro/image-to-video"
+        : "fal-ai/kling-video/v2.1/standard/image-to-video";
 
       const body: Record<string, unknown> = {
         prompt: videoPrompt.slice(0, 2000),
-        duration: String(duration),
+        duration: String(duration === 5 ? "5" : "10"),
         aspect_ratio: "9:16",
+        cfg_scale: 0.5,
       };
       if (publicImageUrl) body.image_url = publicImageUrl;
 
@@ -112,7 +116,6 @@ export async function POST(req: NextRequest) {
       generatorUsed = "MiniMax Video-01";
       const body: Record<string, unknown> = {
         prompt: videoPrompt.slice(0, 2000),
-        duration: duration <= 6 ? 6 : 6,
       };
       if (publicImageUrl) body.first_frame_image = publicImageUrl;
 
@@ -129,18 +132,19 @@ export async function POST(req: NextRequest) {
       const data = await res.json();
       videoUrl = data.video?.url || data.url || "";
 
-    // ─── SEEDANCE via Fal.ai ───────────────────────────────────────────
+    // ─── SEEDANCE 2.0 via Fal.ai ─────────────────────────────────────
     } else if (generatorId === "seedance-1" && falKey) {
-      generatorUsed = "SeedDance 1.0";
+      generatorUsed = "Seedance 2.0";
       const body: Record<string, unknown> = {
         prompt: videoPrompt.slice(0, 2000),
         resolution: "720p",
-        duration: duration <= 5 ? 5 : 10,
+        duration: String(Math.min(Math.max(duration, 4), 15)), // 4-15s
         aspect_ratio: "9:16",
+        generate_audio: true,
       };
       if (publicImageUrl) body.image_url = publicImageUrl;
 
-      const res = await fetch("https://fal.run/fal-ai/seaweed-apt/image-to-video", {
+      const res = await fetch("https://fal.run/bytedance/seedance-2.0/image-to-video", {
         method: "POST",
         headers: { "Authorization": `Key ${falKey}`, "Content-Type": "application/json" },
         body: JSON.stringify(body),
@@ -148,7 +152,7 @@ export async function POST(req: NextRequest) {
 
       if (!res.ok) {
         const err = await res.text();
-        throw new Error(`SeedDance ${res.status}: ${err.slice(0, 300)}`);
+        throw new Error(`Seedance 2.0 ${res.status}: ${err.slice(0, 300)}`);
       }
       const data = await res.json();
       videoUrl = data.video?.url || data.url || "";
@@ -183,11 +187,12 @@ export async function POST(req: NextRequest) {
 
     // ─── LUMA RAY 2 via Fal.ai ────────────────────────────────────────
     } else if (generatorId === "luma-ray2" && falKey) {
-      generatorUsed = "Luma Ray 2";
+      generatorUsed = "Luma Dream Machine";
       const body: Record<string, unknown> = {
         prompt: videoPrompt.slice(0, 2000),
         aspect_ratio: "9:16",
         loop: false,
+        duration: `${duration}s`,
       };
       if (publicImageUrl) {
         body.keyframes = {
@@ -195,7 +200,7 @@ export async function POST(req: NextRequest) {
         };
       }
 
-      const res = await fetch("https://fal.run/fal-ai/luma-dream-machine/image-to-video", {
+      const res = await fetch("https://fal.run/fal-ai/luma-dream-machine/ray-2/image-to-video", {
         method: "POST",
         headers: { "Authorization": `Key ${falKey}`, "Content-Type": "application/json" },
         body: JSON.stringify(body),
