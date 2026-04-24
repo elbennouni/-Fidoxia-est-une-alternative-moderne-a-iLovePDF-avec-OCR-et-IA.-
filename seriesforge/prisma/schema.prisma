@@ -32,17 +32,18 @@ model Series {
 }
 
 model Character {
-  id                 String   @id @default(cuid())
-  seriesId           String
-  name               String
+  id                  String   @id @default(cuid())
+  seriesId            String
+  name                String
   physicalDescription String
-  outfit             String
-  personality        String
-  voiceProfile       String?
-  referenceImageUrl  String?
-  consistencyPrompt  String
-  createdAt          DateTime @default(now())
-  series             Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  outfit              String
+  personality         String
+  voiceProfile        String?
+  heygenVoiceId       String?
+  referenceImageUrl   String?
+  consistencyPrompt   String
+  createdAt           DateTime @default(now())
+  series              Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
 }
 
 model Environment {
