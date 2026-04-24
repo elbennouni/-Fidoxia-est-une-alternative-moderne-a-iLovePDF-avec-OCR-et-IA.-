@@ -12,57 +12,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
-import { readFile } from "fs/promises";
-import path from "path";
+import { tryEnsureDurableImageUrl } from "@/lib/storage/durableImages";
 
 const NANOBANA_BASE = "https://nanophoto.ai/api/nano-banana-pro";
 
-// Upload local file to fal.ai CDN → get public URL
-async function localFileToPublicUrl(localPath: string, falKey: string): Promise<string | null> {
-  try {
-    const filePath = path.join(process.cwd(), "public", localPath);
-    const buffer = await readFile(filePath);
-    const ext = localPath.split(".").pop()?.toLowerCase() || "jpg";
-    const mimeType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
-    const filename = `char-ref-${Date.now()}.${ext}`;
-
-    const blob = new Blob([buffer], { type: mimeType });
-    const formData = new FormData();
-    formData.append("file", blob, filename);
-
-    const res = await fetch("https://fal.run/fal-ai/storage/upload", {
-      method: "POST",
-      headers: { "Authorization": `Key ${falKey}` },
-      body: formData,
-    });
-
-    if (!res.ok) {
-      console.error("Fal storage upload failed:", res.status, await res.text());
-      return null;
-    }
-    const data = await res.json();
-    return data.url || null;
-  } catch (e) {
-    console.error("localFileToPublicUrl error:", e);
-    return null;
-  }
-}
-
-// Get a public URL for any image (local or external)
-async function getPublicUrl(imageUrl: string, falKey: string): Promise<string | null> {
+// Get a durable public URL for any image (local or external)
+async function getPublicUrl(imageUrl: string): Promise<string | null> {
   if (!imageUrl) return null;
 
-  // Already public URL
-  if (imageUrl.startsWith("https://") || imageUrl.startsWith("http://")) {
-    return imageUrl;
-  }
-
-  // Local file — upload to fal.ai storage to get public URL
-  if (imageUrl.startsWith("/")) {
-    return await localFileToPublicUrl(imageUrl, falKey);
-  }
-
-  return null;
+  return tryEnsureDurableImageUrl(imageUrl, {
+    folder: "references",
+    fileNamePrefix: `nano-ref-${Date.now()}`,
+    forceRehostRemote: true,
+  });
 }
 
 // Poll until completed
@@ -146,7 +108,7 @@ export async function POST(req: NextRequest) {
 
     for (const char of charsWithPhoto) {
       if (inputImageUrls.length >= 7) break; // keep 1 slot for environment
-      const url = await getPublicUrl(char.referenceImageUrl!, falKey);
+      const url = await getPublicUrl(char.referenceImageUrl!);
       if (url) {
         inputImageUrls.push(url);
         uploadedChars.push(char.name);
@@ -160,7 +122,7 @@ export async function POST(req: NextRequest) {
 
     const envPreview = (matchedEnv as typeof matchedEnv & { previewImageUrl?: string | null })?.previewImageUrl;
     if (envPreview && inputImageUrls.length < 8) {
-      const url = await getPublicUrl(envPreview, falKey);
+      const url = await getPublicUrl(envPreview);
       if (url) inputImageUrls.push(url);
     }
 

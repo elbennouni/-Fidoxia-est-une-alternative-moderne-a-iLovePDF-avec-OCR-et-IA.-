@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { persistGeneratedImageUrl } from "@/lib/storage/durableImages";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -36,13 +37,17 @@ No characters, empty scene, high quality background art, professional animation 
 
     const imageUrl = (response.data ?? [])[0]?.url;
     if (!imageUrl) throw new Error("No image generated");
+    const durableImageUrl = await persistGeneratedImageUrl(imageUrl, {
+      folder: "environments",
+      fallbackName: env.name,
+    });
 
     await prisma.environment.update({
       where: { id: environmentId },
-      data: { previewImageUrl: imageUrl } as never,
+      data: { previewImageUrl: durableImageUrl } as never,
     });
 
-    return NextResponse.json({ imageUrl, environmentId });
+    return NextResponse.json({ imageUrl: durableImageUrl, environmentId });
   } catch (error) {
     console.error(error);
     const msg = error instanceof Error ? error.message : "Generation failed";

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { ensureDurableImageUrl } from "@/lib/storage/durableImages";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -38,13 +39,18 @@ High quality, detailed, consistent character design, professional animation styl
 
     const imageUrl = (response.data ?? [])[0]?.url;
     if (!imageUrl) throw new Error("No image generated");
+    const durableImageUrl = await ensureDurableImageUrl(imageUrl, {
+      folder: "characters",
+      fileNamePrefix: `${character.name}-reference`,
+      forceRehostRemote: true,
+    });
 
     await prisma.character.update({
       where: { id: characterId },
-      data: { referenceImageUrl: imageUrl },
+      data: { referenceImageUrl: durableImageUrl },
     });
 
-    return NextResponse.json({ imageUrl, characterId });
+    return NextResponse.json({ imageUrl: durableImageUrl, characterId });
   } catch (error) {
     console.error(error);
     const msg = error instanceof Error ? error.message : "Generation failed";
