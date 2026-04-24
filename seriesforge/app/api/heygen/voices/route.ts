@@ -50,24 +50,57 @@ export async function GET(req: NextRequest) {
     }
 
     const data = await res.json();
-    let voices = (data.data?.voices || data.voices || []).map((v: Record<string, unknown>) => ({
-      voice_id: v.voice_id,
-      name: v.name,
-      language: v.language,
-      gender: v.gender,
-      preview_audio: v.preview_audio || "",
-    }));
+    const allVoices = data.data?.voices || data.voices || [];
 
-    // Sort: French voices first
-    voices = voices.sort((a: { language: string }, b: { language: string }) => {
+    // Prefer voices that support Starfish TTS (emotion_support = true OR support_interactive_avatar = true)
+    // These are the multilingual voices that work with /v1/audio/text_to_speech
+    let voices = allVoices
+      .filter((v: Record<string, unknown>) => v.emotion_support === true || v.support_interactive_avatar === true || String(v.language).toLowerCase().includes("multilingual"))
+      .map((v: Record<string, unknown>) => ({
+        voice_id: v.voice_id,
+        name: v.name,
+        language: v.language,
+        gender: v.gender,
+        preview_audio: v.preview_audio || "",
+        starfish_compatible: true,
+      }));
+
+    // If no multilingual voices, fall back to all voices with a warning
+    if (voices.length === 0) {
+      voices = allVoices.map((v: Record<string, unknown>) => ({
+        voice_id: v.voice_id,
+        name: v.name,
+        language: v.language,
+        gender: v.gender,
+        preview_audio: v.preview_audio || "",
+        starfish_compatible: false,
+      }));
+    }
+
+    // Add OpenAI TTS voices as fallback option (always work)
+    const openaiVoices = [
+      { voice_id: "openai-onyx", name: "🤖 OpenAI — Onyx (Homme grave FR)", language: "Multilingual", gender: "male", preview_audio: "", starfish_compatible: true, provider: "openai" },
+      { voice_id: "openai-echo", name: "🤖 OpenAI — Echo (Homme dynamique FR)", language: "Multilingual", gender: "male", preview_audio: "", starfish_compatible: true, provider: "openai" },
+      { voice_id: "openai-fable", name: "🤖 OpenAI — Fable (Narrateur FR)", language: "Multilingual", gender: "male", preview_audio: "", starfish_compatible: true, provider: "openai" },
+      { voice_id: "openai-shimmer", name: "🤖 OpenAI — Shimmer (Femme FR)", language: "Multilingual", gender: "female", preview_audio: "", starfish_compatible: true, provider: "openai" },
+      { voice_id: "openai-nova", name: "🤖 OpenAI — Nova (Femme jeune FR)", language: "Multilingual", gender: "female", preview_audio: "", starfish_compatible: true, provider: "openai" },
+      { voice_id: "openai-alloy", name: "🤖 OpenAI — Alloy (Neutre FR)", language: "Multilingual", gender: "male", preview_audio: "", starfish_compatible: true, provider: "openai" },
+    ];
+
+    // Sort: French first, then multilingual, then others
+    voices = [...openaiVoices, ...voices].sort((a: { language: string }, b: { language: string }) => {
       const aFr = String(a.language).toLowerCase().includes("french");
       const bFr = String(b.language).toLowerCase().includes("french");
+      const aMulti = String(a.language).toLowerCase().includes("multilingual");
+      const bMulti = String(b.language).toLowerCase().includes("multilingual");
       if (aFr && !bFr) return -1;
       if (!aFr && bFr) return 1;
+      if (aMulti && !bMulti) return -1;
+      if (!aMulti && bMulti) return 1;
       return 0;
     });
 
-    return NextResponse.json({ voices, source: "heygen" });
+    return NextResponse.json({ voices, source: "heygen", totalHeyGen: allVoices.length });
   } catch (error) {
     console.error("HeyGen voices error:", error);
     return NextResponse.json({ voices: MOCK_VOICES, source: "mock" });
