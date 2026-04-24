@@ -6,7 +6,7 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Users, MapPin, Film, Plus, Loader2, ChevronRight,
-  Sparkles, Tv2, Settings2, Image, Volume2, Video, Zap, FileJson, Trash2, AlertTriangle
+  Sparkles, Tv2, Settings2, Image, Volume2, Video, Zap, FileJson, Trash2, AlertTriangle, RotateCcw
 } from "lucide-react";
 
 interface Series {
@@ -38,6 +38,7 @@ export default function SeriesDetailPage({ params }: { params: Promise<{ id: str
   const [activeTab, setActiveTab] = useState<"overview" | "episodes" | "characters" | "environments">("overview");
   const [deleteEpId, setDeleteEpId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [restoringConfig, setRestoringConfig] = useState(false);
 
   useEffect(() => { fetchSeries(); }, [id]);
 
@@ -75,6 +76,34 @@ export default function SeriesDetailPage({ params }: { params: Promise<{ id: str
       fetchSeries();
     } catch { toast.error("Erreur suppression"); }
     finally { setDeleting(false); }
+  }
+
+  async function restoreConfiguredSetup() {
+    const confirmed = window.confirm("Restaurer les personnages et l'épisode configurés ? Cela remplacera les personnages, décors et épisodes actuels.");
+    if (!confirmed) return;
+
+    setRestoringConfig(true);
+    const t = toast.loading("Restauration de la configuration en cours...");
+    try {
+      const res = await fetch(`/api/series/${id}/restore-config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ replaceExisting: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Restauration impossible");
+      toast.dismiss(t);
+      toast.success(`Configuration restaurée : ${data.characterCount} personnages, ${data.sceneCount} scènes`);
+      await fetchSeries();
+      if (data.episodeId) {
+        router.push(`/episodes/${data.episodeId}/editor`);
+      }
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Erreur de restauration");
+    } finally {
+      setRestoringConfig(false);
+    }
   }
 
   if (loading) return <div className="flex items-center justify-center min-h-screen"><Loader2 className="w-8 h-8 animate-spin text-purple-400" /></div>;
@@ -139,6 +168,15 @@ export default function SeriesDetailPage({ params }: { params: Promise<{ id: str
               </div>
             </div>
             <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={restoreConfiguredSetup}
+                disabled={restoringConfig}
+                className="flex items-center gap-1.5 px-3 py-2 bg-amber-600/20 border border-amber-600/30 hover:bg-amber-600/35 disabled:opacity-50 text-amber-300 text-xs rounded-xl transition-all"
+                title="Restaurer personnages + épisode préconfigurés"
+              >
+                {restoringConfig ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RotateCcw className="w-3.5 h-3.5" />}
+                Restaurer config
+              </button>
               <Link href={`/series/${id}/characters`} className="flex items-center gap-1.5 px-3 py-2 bg-[#1e1e2e] border border-[#2a2a3e] hover:border-blue-500/50 text-gray-300 text-xs rounded-xl transition-all">
                 <Users className="w-3.5 h-3.5 text-blue-400" /> {series.characters.length} personnages
               </Link>
