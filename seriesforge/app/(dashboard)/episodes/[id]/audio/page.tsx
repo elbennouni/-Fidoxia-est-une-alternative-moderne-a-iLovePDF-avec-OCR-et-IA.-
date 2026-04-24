@@ -6,7 +6,8 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Volume2, Loader2, Copy, Music, Mic, Play, Sparkles,
-  ExternalLink, CheckCircle, X, Settings, Square, Upload, Trash2, SlidersHorizontal, RotateCcw
+  ExternalLink, CheckCircle, X, Settings, Square, Upload, Trash2, SlidersHorizontal, RotateCcw,
+  Pencil, Save
 } from "lucide-react";
 import { CostBadge } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
@@ -81,6 +82,9 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   const [playingBg, setPlayingBg] = useState(false);
   const [playingAudio, setPlayingAudio] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [editingField, setEditingField] = useState<{ sceneId: string; field: string } | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [savingEdit, setSavingEdit] = useState(false);
 
   useEffect(() => { fetchData(); fetchVoices(); }, [id]);
 
@@ -201,6 +205,36 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
     }
   }
 
+  function startEdit(sceneId: string, field: string, currentValue: string) {
+    setEditingField({ sceneId, field });
+    setEditValue(currentValue);
+  }
+
+  async function saveEdit() {
+    if (!editingField) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/scenes/${editingField.sceneId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [editingField.field]: editValue }),
+      });
+      if (!res.ok) throw new Error("Erreur sauvegarde");
+      toast.success("Texte sauvegardé ! L'audio a été réinitialisé.");
+      setEditingField(null);
+      fetchData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur");
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  function cancelEdit() {
+    setEditingField(null);
+    setEditValue("");
+  }
+
   async function deleteSceneVoice(sceneId: string) {
     try {
       await fetch(`/api/scenes/${sceneId}/voice`, { method: "DELETE" });
@@ -313,6 +347,88 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   const filteredVoices = voices.filter(v =>
     voiceFilter === "all" || v.language === voiceFilter || v.gender === voiceFilter
   );
+
+  // Inline editable text field component
+  function EditableField({
+    sceneId, field, value, label, color = "blue", multiline = true
+  }: {
+    sceneId: string; field: string; value: string; label: string;
+    color?: "blue" | "purple"; multiline?: boolean;
+  }) {
+    const isEditing = editingField?.sceneId === sceneId && editingField?.field === field;
+    const colorStyles = {
+      blue: "bg-blue-900/10 border-blue-600/30 text-blue-200",
+      purple: "bg-purple-900/10 border-purple-600/30 text-purple-200",
+    };
+
+    return (
+      <div className="group">
+        <div className="flex items-center justify-between mb-1">
+          <p className="text-xs text-gray-500 uppercase tracking-wide font-medium flex items-center gap-1">
+            <Mic className="w-3 h-3" /> {label}
+          </p>
+          {!isEditing && (
+            <button
+              onClick={() => startEdit(sceneId, field, value)}
+              className="flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500 hover:text-white bg-[#1e1e2e] hover:bg-purple-600/20 border border-[#2a2a3e] hover:border-purple-500/40 rounded-lg transition-all opacity-0 group-hover:opacity-100"
+            >
+              <Pencil className="w-3 h-3" /> Modifier
+            </button>
+          )}
+        </div>
+
+        {isEditing ? (
+          <div className="space-y-2">
+            {multiline ? (
+              <textarea
+                value={editValue}
+                onChange={e => setEditValue(e.target.value)}
+                rows={Math.max(3, editValue.split("\n").length + 1)}
+                className={`w-full px-3 py-2 rounded-xl border text-sm leading-relaxed resize-none focus:outline-none focus:ring-1 focus:ring-purple-500 ${colorStyles[color]} bg-opacity-80`}
+                autoFocus
+              />
+            ) : (
+              <input
+                value={editValue}
+                onChange={e => setEditValue(e.target.value)}
+                className={`w-full px-3 py-2 rounded-xl border text-sm focus:outline-none focus:ring-1 focus:ring-purple-500 ${colorStyles[color]}`}
+                autoFocus
+              />
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={saveEdit}
+                disabled={savingEdit}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-all"
+              >
+                {savingEdit ? <Loader2 className="w-3 h-3 animate-spin" /> : <Save className="w-3 h-3" />}
+                Sauvegarder
+              </button>
+              <button
+                onClick={cancelEdit}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-[#1e1e2e] border border-[#2a2a3e] text-gray-400 hover:text-white text-xs rounded-lg transition-all"
+              >
+                <X className="w-3 h-3" /> Annuler
+              </button>
+              <span className="text-xs text-gray-600 self-center ml-1">⚠ L'audio sera réinitialisé</span>
+            </div>
+          </div>
+        ) : (
+          <div
+            className={`rounded-xl p-3 border cursor-pointer hover:opacity-90 transition-opacity ${colorStyles[color]}`}
+            onClick={() => startEdit(sceneId, field, value)}
+            title="Cliquer pour modifier"
+          >
+            {field === "narration" ? (
+              <p className="text-sm leading-relaxed italic">&ldquo;{value}&rdquo;</p>
+            ) : (
+              <p className="text-sm leading-relaxed whitespace-pre-line">{value}</p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (loading) return <div className="flex justify-center py-16"><Loader2 className="w-8 h-8 animate-spin text-purple-400" /></div>;
   if (!episode) return null;
@@ -653,17 +769,15 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                   {/* Narration */}
                   {scene.narration && (
                     <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-xs text-gray-500 uppercase tracking-wide font-medium flex items-center gap-1">
-                          <Mic className="w-3 h-3" /> Narration (Voix off)
-                        </p>
-                        <button onClick={() => copy(scene.narration!)} className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1">
-                          <Copy className="w-3 h-3" /> Copier
-                        </button>
-                      </div>
                       <div className="bg-blue-900/10 border border-blue-600/30 rounded-xl p-3 flex items-start gap-3">
                         <div className="flex-1">
-                          <p className="text-sm text-blue-200 italic leading-relaxed">&ldquo;{scene.narration}&rdquo;</p>
+                          <EditableField
+                            sceneId={scene.id}
+                            field="narration"
+                            value={scene.narration!}
+                            label="Narration (Voix off)"
+                            color="blue"
+                          />
                           {scene.voiceUrl && (
                             <div className="mt-2 space-y-1.5">
                               <div className="flex items-center gap-2">
@@ -671,16 +785,10 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                                 <audio controls src={scene.voiceUrl} className="h-7 flex-1" />
                               </div>
                               <div className="flex gap-1.5">
-                                <button
-                                  onClick={() => deleteSceneVoice(scene.id)}
-                                  className="flex items-center gap-1 px-2 py-0.5 bg-[#1e1e2e] hover:bg-orange-600/20 border border-[#2a2a3e] hover:border-orange-600/30 text-gray-500 hover:text-orange-300 text-xs rounded-lg transition-all"
-                                >
+                                <button onClick={() => deleteSceneVoice(scene.id)} className="flex items-center gap-1 px-2 py-0.5 bg-[#1e1e2e] hover:bg-orange-600/20 border border-[#2a2a3e] hover:border-orange-600/30 text-gray-500 hover:text-orange-300 text-xs rounded-lg transition-all">
                                   <RotateCcw className="w-2.5 h-2.5" /> Regénérer
                                 </button>
-                                <button
-                                  onClick={() => deleteSceneVoice(scene.id)}
-                                  className="flex items-center gap-1 px-2 py-0.5 bg-[#1e1e2e] hover:bg-red-600/20 border border-[#2a2a3e] hover:border-red-600/30 text-gray-500 hover:text-red-400 text-xs rounded-lg transition-all"
-                                >
+                                <button onClick={() => deleteSceneVoice(scene.id)} className="flex items-center gap-1 px-2 py-0.5 bg-[#1e1e2e] hover:bg-red-600/20 border border-[#2a2a3e] hover:border-red-600/30 text-gray-500 hover:text-red-400 text-xs rounded-lg transition-all">
                                   <Trash2 className="w-2.5 h-2.5" /> Supprimer
                                 </button>
                               </div>
@@ -707,8 +815,15 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                   {/* Dialogue lines */}
                   {dialogueLines.length > 0 && (
                     <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wide font-medium flex items-center gap-1 mb-2">
-                        <Volume2 className="w-3 h-3" /> Dialogues
+                      <EditableField
+                        sceneId={scene.id}
+                        field="dialogue"
+                        value={scene.dialogue!}
+                        label="Dialogues"
+                        color="purple"
+                      />
+                      <p className="text-xs text-gray-500 uppercase tracking-wide font-medium flex items-center gap-1 mt-3 mb-2">
+                        <Volume2 className="w-3 h-3" /> Générer par ligne
                       </p>
                       <div className="space-y-2">
                         {dialogueLines.map((line, idx) => {
