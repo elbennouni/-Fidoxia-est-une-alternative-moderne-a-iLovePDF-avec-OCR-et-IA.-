@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { Plus, Tv2, Film, Sparkles, Zap, ArrowRight, Loader2 } from "lucide-react";
+import { Plus, Tv2, Film, Sparkles, Zap, ArrowRight, Loader2, Users } from "lucide-react";
 
 interface Series {
   id: string;
@@ -21,6 +21,7 @@ export default function DashboardPage() {
   const [series, setSeries] = useState<Series[]>([]);
   const [loading, setLoading] = useState(true);
   const [demoLoading, setDemoLoading] = useState(false);
+  const [restoreLoading, setRestoreLoading] = useState(false);
 
   useEffect(() => {
     fetchSeries();
@@ -36,6 +37,30 @@ export default function DashboardPage() {
       toast.error("Erreur chargement des séries");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function restoreKonantaSetup() {
+    setRestoreLoading(true);
+    const t = toast.loading("Restauration de la série Konanta...");
+    try {
+      const res = await fetch("/api/demo/setup-konanta", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Restauration échouée");
+      toast.dismiss(t);
+      const parts = [
+        data.seriesCreated ? "série créée" : "série existante",
+        `${data.charactersCreated} perso(s) ajouté(s)`,
+        `${data.environmentsCreated} décor(s) ajouté(s)`,
+        data.episodeCreated ? "épisode créé" : "épisode existant",
+      ];
+      toast.success(`Konanta prête: ${parts.join(" · ")}`);
+      router.push(`/series/${data.seriesId}`);
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Restauration échouée");
+    } finally {
+      setRestoreLoading(false);
     }
   }
 
@@ -104,23 +129,38 @@ export default function DashboardPage() {
               <Zap className="w-5 h-5 text-yellow-400" />
               <span className="text-yellow-400 font-semibold text-sm">DEMO</span>
             </div>
-            <h2 className="text-xl font-bold text-white">Générer le Démo Konanta</h2>
+            <h2 className="text-xl font-bold text-white">Démo Konanta</h2>
             <p className="text-gray-300 text-sm mt-1">
               Pipeline complet : 5 personnages · 8 scènes · narration · storyboard · plan audio · contrôle qualité
             </p>
             <p className="text-gray-400 text-xs mt-1">Series: &quot;Les Marseillais à Konanta&quot; — Pixar 3D Reality TV</p>
           </div>
-          <button
-            onClick={generateKonantaDemo}
-            disabled={demoLoading}
-            className="flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all duration-200 whitespace-nowrap glow-purple"
-          >
-            {demoLoading ? (
-              <><Loader2 className="w-4 h-4 animate-spin" /> Génération...</>
-            ) : (
-              <><Sparkles className="w-4 h-4" /> Générer le Démo</>
-            )}
-          </button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={restoreKonantaSetup}
+              disabled={restoreLoading || demoLoading}
+              title="Recréer juste la série, les personnages, les décors et l'épisode (sans lancer le pipeline IA)"
+              className="flex items-center gap-2 px-5 py-3 bg-[#1e1e2e] hover:bg-[#2a2a3e] border border-purple-500/40 hover:border-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all duration-200 whitespace-nowrap"
+            >
+              {restoreLoading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Restauration...</>
+              ) : (
+                <><Users className="w-4 h-4" /> Remettre ma configuration</>
+              )}
+            </button>
+            <button
+              onClick={generateKonantaDemo}
+              disabled={demoLoading || restoreLoading}
+              title="Lancer le pipeline IA complet (2-3 minutes)"
+              className="flex items-center gap-2 px-6 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all duration-200 whitespace-nowrap glow-purple"
+            >
+              {demoLoading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Génération...</>
+              ) : (
+                <><Sparkles className="w-4 h-4" /> Générer le Démo</>
+              )}
+            </button>
+          </div>
         </div>
       </div>
 
