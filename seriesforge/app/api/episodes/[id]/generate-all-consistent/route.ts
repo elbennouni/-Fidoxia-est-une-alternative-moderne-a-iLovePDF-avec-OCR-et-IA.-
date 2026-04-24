@@ -4,8 +4,44 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { buildScenePromptWithDNA, generateVisualDNA } from "@/lib/agents/visualDNAAgent";
 import type { VisualDNA } from "@/lib/agents/visualDNAAgent";
+import { readFile } from "fs/promises";
+import path from "path";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+async function toBase64Uri(imageUrl: string): Promise<string | null> {
+  try {
+    if (imageUrl.startsWith("/")) {
+      const filePath = path.join(process.cwd(), "public", imageUrl);
+      const buffer = await readFile(filePath);
+      const ext = imageUrl.split(".").pop()?.toLowerCase() || "jpg";
+      const mime = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+      return `data:${mime};base64,${buffer.toString("base64")}`;
+    }
+    return imageUrl;
+  } catch { return null; }
+}
+
+// GPT-4o Vision: describe character from photo for injection into prompt
+async function describeFromPhoto(imageUrl: string, name: string, style: string): Promise<string> {
+  try {
+    const url = imageUrl.startsWith("/") ? await toBase64Uri(imageUrl) : imageUrl;
+    if (!url) return "";
+    const res = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: `Describe character "${name}" from this image in 60 words for ${style} image generation. Be ultra-specific: face shape, eye color/shape, skin tone, hair color/style, exact clothing with colors, accessories. This will reproduce them exactly.` },
+          { type: "image_url", image_url: { url, detail: "high" } }
+        ]
+      }],
+      max_tokens: 150,
+      temperature: 0.1,
+    });
+    return res.choices[0].message.content || "";
+  } catch { return ""; }
+}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -73,7 +109,19 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           scene.location?.toLowerCase().includes(e.name.toLowerCase())
         ) || series.environments[0];
 
-        const prompt = buildScenePromptWithDNA({
+        // Build character descriptions: DNA > Vision photo analysis > text
+      let photoDescriptions = "";
+      for (const char of series.characters) {
+        const inScene = sceneCharNames.some(sc => sc.toLowerCase().includes(char.name.toLowerCase()));
+        if (!inScene) continue;
+        if (char.visualDNA) continue; // already handled by buildScenePromptWithDNA
+        if (char.referenceImageUrl) {
+          const desc = await describeFromPhoto(char.referenceImageUrl, char.name, series.visualStyle);
+          if (desc) photoDescriptions += `\n[${char.name.toUpperCase()} from photo]: ${desc}.`;
+        }
+      }
+
+      const baseprompt = buildScenePromptWithDNA({
           characters,
           sceneCharacters: sceneCharNames,
           location: scene.location || "",
@@ -86,6 +134,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           lighting: matchedEnv?.lighting || undefined,
           mood: matchedEnv?.mood || undefined,
         });
+
+      const prompt = photoDescriptions ? `${baseprompt}\n\nADDITIONAL CHARACTER PHOTO REFERENCES:${photoDescriptions}` : baseprompt;
 
         const size = episode.format === "9:16" ? "1024x1792" : "1792x1024";
 

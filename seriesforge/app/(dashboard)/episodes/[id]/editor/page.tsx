@@ -164,12 +164,9 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.dismiss(t);
-      const refInfo = data.refImagesUsed?.length > 0 ? ` (refs: ${data.refImagesUsed.join(", ")})` : "";
-      if (data.missingDNA?.length > 0) {
-        toast(`Image générée${refInfo} — ${data.missingDNA.join(", ")} sans ADN visuel. Générez l'ADN dans Personnages.`, { icon: "⚠️", duration: 6000 });
-      } else {
-        toast.success(`Image scène ${scene.sceneNumber} générée !${refInfo}`);
-      }
+      const withPhoto = data.charactersWithPhoto?.length > 0 ? ` · 📸 photo: ${data.charactersWithPhoto.join(", ")}` : "";
+      const withDNA = data.charactersWithDNA?.length > 0 ? ` · 🧬 ADN: ${data.charactersWithDNA.join(", ")}` : "";
+      toast.success(`Image scène ${scene.sceneNumber} générée !${withDNA}${withPhoto}`, { duration: 5000 });
       fetchEpisode();
     } catch (err) {
       toast.dismiss(t);
