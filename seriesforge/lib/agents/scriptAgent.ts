@@ -38,6 +38,7 @@ export async function generateScript(params: {
   const envList = environments.map(e => `- ${e.name}: ${e.description}`).join("\n");
 
   const prompt = `You are a professional TV scriptwriter. Write a structured episode script for an animated series.
+CRITICAL LANGUAGE RULE: Detect the language of the episode idea and series title. Write ALL text content (action, narration, dialogue, emotion, soundDesign, synopsis, title) in THAT EXACT LANGUAGE. If French → write 100% in French. Never switch languages. Never translate.
 
 SERIES: "${seriesTitle}"
 VISUAL STYLE: ${visualStyle}

@@ -32,6 +32,7 @@ export async function checkSceneQuality(params: {
   const { scene, visualStyle, previousScene } = params;
 
   const prompt = `You are a quality control agent for AI-generated animated series scenes.
+LANGUAGE RULE: Write issues and feedback in the SAME LANGUAGE as the scene content.
 
 Evaluate this scene on a scale of 0-100 based on these criteria:
 1. Has clear visible action (not just description)

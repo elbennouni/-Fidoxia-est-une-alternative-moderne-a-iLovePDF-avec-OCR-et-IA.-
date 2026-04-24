@@ -44,12 +44,14 @@ export async function analyzeAndNormalizeScenario(params: {
 
 The user has provided a scenario/script in JSON format. It might have any structure — different field names, nested objects, text blocks, etc.
 
+CRITICAL LANGUAGE RULE: You MUST preserve and use the EXACT SAME LANGUAGE as the input scenario. If the input is in French, ALL your output text (action, narration, dialogue, emotion, soundDesign, synopsis, title) MUST be in French. Never translate.
+
 Your job is to:
 1. Read and understand ALL the content regardless of format
 2. Extract every scene, dialogue, action, character, location
 3. Normalize it into a strict structured format
-4. Fill in missing fields intelligently based on context
-5. Keep ALL original dialogue and narration text EXACTLY as written
+4. Fill in missing fields intelligently based on context — IN THE SAME LANGUAGE as the input
+5. Keep ALL original dialogue and narration text EXACTLY as written (same language)
 
 SERIES CONTEXT:
 - Title: ${seriesTitle}
@@ -104,6 +106,8 @@ export async function generateArtisticDirection(params: {
     .join("\n");
 
   const prompt = `You are a visionary art director for an animated series.
+
+LANGUAGE RULE: Write all descriptions in the SAME LANGUAGE as the series title and scenario. If French → write in French.
 
 Based on this episode scenario, define a complete artistic direction that will make every image visually consistent.
 

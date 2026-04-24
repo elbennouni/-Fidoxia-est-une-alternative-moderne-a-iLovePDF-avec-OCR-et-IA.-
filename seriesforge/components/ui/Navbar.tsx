@@ -19,7 +19,7 @@ export default function Navbar() {
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  async function handleLogout() {
+  async function handleDéconnexion() {
     await fetch("/api/auth/logout", { method: "POST" });
     toast.success("Logged out");
     router.push("/login");
@@ -58,11 +58,11 @@ export default function Navbar() {
 
         <div className="flex items-center gap-2">
           <button
-            onClick={handleLogout}
+            onClick={handleDéconnexion}
             className="hidden md:flex items-center gap-2 px-3 py-2 text-sm text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-all"
           >
             <LogOut className="w-4 h-4" />
-            Logout
+            Déconnexion
           </button>
           <button
             onClick={() => setMobileOpen(!mobileOpen)}
@@ -93,11 +93,11 @@ export default function Navbar() {
             );
           })}
           <button
-            onClick={handleLogout}
+            onClick={handleDéconnexion}
             className="flex items-center gap-2 px-4 py-3 text-sm text-gray-400 w-full"
           >
             <LogOut className="w-4 h-4" />
-            Logout
+            Déconnexion
           </button>
         </div>
       )}

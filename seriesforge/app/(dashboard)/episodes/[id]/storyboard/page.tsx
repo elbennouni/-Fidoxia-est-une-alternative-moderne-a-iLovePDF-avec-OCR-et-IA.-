@@ -47,7 +47,7 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
 
   function copyPrompt(prompt: string) {
     navigator.clipboard.writeText(prompt);
-    toast.success("Prompt copied!");
+    toast.success("Prompt copié !");
   }
 
   const validated = scenes.filter(s => s.validatedByUser).length;
@@ -56,7 +56,7 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
     <div className="max-w-7xl mx-auto px-4 py-8">
       <div className="mb-6">
         <Link href={`/episodes/${id}/editor`} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-4 transition-colors w-fit">
-          <ArrowLeft className="w-4 h-4" /> Back to Editor
+          <ArrowLeft className="w-4 h-4" /> Retour à l'éditeur
         </Link>
         <div className="flex items-center justify-between">
           <div>
@@ -83,9 +83,9 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
       ) : scenes.length === 0 ? (
         <div className="text-center py-16 bg-[#13131a] border border-dashed border-[#2a2a3e] rounded-2xl">
           <Image className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-400">Run the episode pipeline first to generate the storyboard</p>
+          <p className="text-gray-400">Lancez d'abord le pipeline de l'épisode pour générer le storyboard</p>
           <Link href={`/episodes/${id}/editor`} className="mt-4 inline-flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-all">
-            Go to Editor
+            Aller à l'éditeur
           </Link>
         </div>
       ) : (
@@ -99,8 +99,8 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
                 ) : (
                   <div className="text-center p-4">
                     <Image className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-                    <p className="text-xs text-gray-500">Prompt ready</p>
-                    <p className="text-xs text-gray-600">Generate via Replicate</p>
+                    <p className="text-xs text-gray-500">Prompt prêt</p>
+                    <p className="text-xs text-gray-600">Générer via DALL-E ou Fal.ai</p>
                   </div>
                 )}
                 {scene.validatedByUser && (
@@ -118,7 +118,7 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
               {/* Info */}
               <div className="p-3">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-semibold text-white text-sm">Scene {scene.sceneNumber}</span>
+                  <span className="font-semibold text-white text-sm">Scène {scene.sceneNumber}</span>
                   {scene.timecode && <span className="text-xs text-gray-500">{scene.timecode}</span>}
                 </div>
                 {scene.location && <p className="text-xs text-gray-400 mb-1">📍 {scene.location}</p>}

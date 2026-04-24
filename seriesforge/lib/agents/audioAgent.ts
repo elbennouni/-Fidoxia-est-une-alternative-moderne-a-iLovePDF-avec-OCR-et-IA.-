@@ -36,6 +36,7 @@ export async function generateAudioPlan(params: {
     .join(", ");
 
   const prompt = `You are a professional sound designer and audio director for animated series.
+LANGUAGE RULE: Write narrator text, dialogue adaptations, music descriptions in the SAME LANGUAGE as the scenes (French if scenes are in French).
 
 SERIES: "${seriesTitle}"
 EPISODE: "${episodeTitle}"

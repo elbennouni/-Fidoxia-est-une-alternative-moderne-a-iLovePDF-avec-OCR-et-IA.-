@@ -35,6 +35,7 @@ export async function autoFixScene(params: {
   const { scene, issues, visualStyle, format } = params;
 
   const prompt = `You are an expert animated series scene fixer. Fix this scene to score above 85/100.
+LANGUAGE RULE: Keep ALL text in the SAME LANGUAGE as the original scene content. If French → fix in French.
 
 ISSUES TO FIX:
 ${issues.join("\n")}
