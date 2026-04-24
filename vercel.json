@@ -1,0 +1,11 @@
+{
+  "buildCommand": "cd seriesforge && npm install && npx prisma generate && npm run build",
+  "outputDirectory": "seriesforge/.next",
+  "framework": "nextjs",
+  "installCommand": "cd seriesforge && npm install",
+  "functions": {
+    "seriesforge/app/api/**/*.ts": {
+      "maxDuration": 300
+    }
+  }
+}
