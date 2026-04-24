@@ -6,7 +6,7 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Zap, Download, Loader2, Sparkles, CheckCircle,
-  Clock, AlertCircle, Image, Volume2, Video, ChevronDown, ChevronUp, Copy, FileJson, X, Film
+  Clock, AlertCircle, Image, Volume2, Video, ChevronDown, ChevronUp, Copy, FileJson, X, Film, Users
 } from "lucide-react";
 import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
@@ -42,6 +42,12 @@ interface Scene {
   videoUrl?: string;
 }
 
+interface SeriesCharacter {
+  id: string;
+  name: string;
+  referenceImageUrl?: string;
+}
+
 interface Episode {
   id: string;
   title: string;
@@ -49,7 +55,7 @@ interface Episode {
   format: string;
   script?: string;
   seriesId: string;
-  series: { id: string; title: string; visualStyle: string; tone: string };
+  series: { id: string; title: string; visualStyle: string; tone: string; characters: SeriesCharacter[] };
   scenes: Scene[];
 }
 
@@ -70,6 +76,8 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
   const [showGenPicker, setShowGenPicker] = useState(false);
   const [showPipelineConfirm, setShowPipelineConfirm] = useState(false);
   const [showImageHistory, setShowImageHistory] = useState<string | null>(null); // scene id
+  const [editingCharactersSceneId, setEditingCharactersSceneId] = useState<string | null>(null);
+  const [savingCharacters, setSavingCharacters] = useState(false);
 
   useEffect(() => { fetchEpisode(); }, [id]);
 
@@ -110,6 +118,25 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
       toast.success("Image supprimée de l'historique");
       fetchEpisode();
     } catch { toast.error("Erreur suppression"); }
+  }
+
+  async function saveSceneCharacters(sceneId: string, characterNames: string[]) {
+    setSavingCharacters(true);
+    try {
+      const res = await fetch(`/api/scenes/${sceneId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ charactersJson: JSON.stringify(characterNames) }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast.success("Personnages mis à jour !");
+      setEditingCharactersSceneId(null);
+      fetchEpisode();
+    } catch {
+      toast.error("Erreur mise à jour personnages");
+    } finally {
+      setSavingCharacters(false);
+    }
   }
 
   function confirmRunPipeline() {
@@ -388,6 +415,35 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
         );
       })()}
 
+      {/* Character Edit Modal */}
+      {editingCharactersSceneId && (() => {
+        const scene = episode.scenes.find(s => s.id === editingCharactersSceneId);
+        if (!scene) return null;
+        const currentChars: string[] = JSON.parse(scene.charactersJson || "[]");
+        const seriesChars = episode.series.characters || [];
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="bg-[#13131a] border border-[#2a2a3e] rounded-2xl w-full max-w-md p-6 shadow-2xl">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Users className="w-5 h-5 text-blue-400" /> Personnages — Scène {scene.sceneNumber}
+                </h2>
+                <button onClick={() => setEditingCharactersSceneId(null)} className="text-gray-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <CharacterSelector
+                seriesCharacters={seriesChars}
+                initial={currentChars}
+                onSave={(names) => saveSceneCharacters(scene.id, names)}
+                onCancel={() => setEditingCharactersSceneId(null)}
+                saving={savingCharacters}
+              />
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Header */}
       <div className="mb-6">
         <Link href={`/series/${episode.series.id}/episodes`} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-4 transition-colors w-fit">
@@ -633,16 +689,31 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
 
                       {/* Right: script info */}
                       <div className="space-y-3">
-                        {characters.length > 0 && (
-                          <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Personnages</p>
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-xs text-gray-500 uppercase tracking-wide">Personnages</p>
+                            <button
+                              onClick={() => setEditingCharactersSceneId(scene.id)}
+                              className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                            >
+                              <Users className="w-3 h-3" /> Modifier
+                            </button>
+                          </div>
+                          {characters.length > 0 ? (
                             <div className="flex flex-wrap gap-1">
                               {characters.map(c => (
                                 <span key={c} className="text-xs px-2 py-0.5 bg-blue-600/20 border border-blue-600/30 rounded-full text-blue-300">{c}</span>
                               ))}
                             </div>
-                          </div>
-                        )}
+                          ) : (
+                            <button
+                              onClick={() => setEditingCharactersSceneId(scene.id)}
+                              className="text-xs text-gray-500 hover:text-blue-400 transition-colors italic"
+                            >
+                              + Ajouter des personnages
+                            </button>
+                          )}
+                        </div>
                         {scene.action && <ScriptField label="Action" value={scene.action} />}
                         {scene.emotion && <ScriptField label="Émotion" value={scene.emotion} accent="yellow" />}
                         {scene.camera && <ScriptField label="Caméra" value={scene.camera} />}
@@ -727,6 +798,87 @@ function ScriptField({ label, value, accent }: { label: string; value: string; a
       <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">{label}</p>
       <div className={`rounded-lg p-2 border text-sm ${accent === "yellow" ? "bg-yellow-900/10 border-yellow-600/20 text-yellow-200" : "bg-[#1e1e2e] border-[#2a2a3e] text-gray-300"}`}>
         {value}
+      </div>
+    </div>
+  );
+}
+
+function CharacterSelector({
+  seriesCharacters,
+  initial,
+  onSave,
+  onCancel,
+  saving,
+}: {
+  seriesCharacters: Array<{ id: string; name: string; referenceImageUrl?: string }>;
+  initial: string[];
+  onSave: (names: string[]) => void;
+  onCancel: () => void;
+  saving: boolean;
+}) {
+  const [selected, setSelected] = useState<Set<string>>(new Set(initial));
+
+  function toggle(name: string) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
+  }
+
+  if (seriesCharacters.length === 0) {
+    return (
+      <div className="text-center py-8 text-gray-500 text-sm">
+        <p>Aucun personnage dans cette série.</p>
+        <p className="mt-1 text-xs">Créez d'abord des personnages dans la section Personnages.</p>
+        <button onClick={onCancel} className="mt-4 px-4 py-2 border border-[#2a2a3e] text-gray-400 rounded-xl text-sm">Fermer</button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <p className="text-sm text-gray-400 mb-3">Sélectionnez les personnages présents dans cette scène :</p>
+      <div className="space-y-2 max-h-72 overflow-y-auto scrollbar-thin pr-1 mb-4">
+        {seriesCharacters.map(char => {
+          const isSelected = selected.has(char.name);
+          return (
+            <button
+              key={char.id}
+              onClick={() => toggle(char.name)}
+              className={`w-full flex items-center gap-3 p-3 rounded-xl border transition-all text-left ${
+                isSelected
+                  ? "bg-blue-600/20 border-blue-500/50"
+                  : "bg-[#1e1e2e] border-[#2a2a3e] hover:border-blue-500/30"
+              }`}
+            >
+              <div className="w-9 h-9 rounded-full overflow-hidden bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
+                {char.referenceImageUrl ? (
+                  <img src={char.referenceImageUrl} alt={char.name} className="w-full h-full object-cover" />
+                ) : char.name[0]}
+              </div>
+              <span className={`font-medium text-sm flex-1 ${isSelected ? "text-blue-200" : "text-gray-300"}`}>{char.name}</span>
+              <div className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-all ${
+                isSelected ? "bg-blue-500 border-blue-500" : "border-gray-600"
+              }`}>
+                {isSelected && <span className="text-white text-xs font-bold">✓</span>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+      <div className="flex gap-3">
+        <button onClick={onCancel} className="flex-1 py-2.5 border border-[#2a2a3e] text-gray-400 rounded-xl text-sm hover:border-gray-500 transition-all">
+          Annuler
+        </button>
+        <button
+          onClick={() => onSave(Array.from(selected))}
+          disabled={saving}
+          className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl text-sm flex items-center justify-center gap-2 transition-all"
+        >
+          {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
+          {saving ? "Enregistrement..." : "Enregistrer"}
+        </button>
       </div>
     </div>
   );
