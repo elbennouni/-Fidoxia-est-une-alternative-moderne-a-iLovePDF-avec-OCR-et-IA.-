@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { readFile } from "fs/promises";
+import path from "path";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -23,6 +25,22 @@ export async function POST(req: NextRequest) {
     }
 
     const visualStyle = character.series.visualStyle;
+
+    // Resolve image URL — local uploads need to be base64 for GPT-4o Vision
+    let imageContent: { type: "image_url"; image_url: { url: string; detail: "high" } };
+    const refUrl = character.referenceImageUrl!;
+
+    if (refUrl.startsWith("/")) {
+      // Local file — convert to base64
+      const filePath = path.join(process.cwd(), "public", refUrl);
+      const fileBuffer = await readFile(filePath);
+      const ext = refUrl.split(".").pop()?.toLowerCase() || "jpg";
+      const mimeType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+      const dataUri = `data:${mimeType};base64,${fileBuffer.toString("base64")}`;
+      imageContent = { type: "image_url", image_url: { url: dataUri, detail: "high" } };
+    } else {
+      imageContent = { type: "image_url", image_url: { url: refUrl, detail: "high" } };
+    }
 
     // Use GPT-4o Vision to analyze the actual photo
     const response = await openai.chat.completions.create({
@@ -63,13 +81,7 @@ Analyze the image and return ONLY valid JSON with these exact fields — be extr
   "lockedPrompt": "A 100-word ultra-precise prompt that would reproduce this EXACT character in ${visualStyle} — include all physical details, outfit, colors, Pixar 3D style specifications"
 }`
             },
-            {
-              type: "image_url",
-              image_url: {
-                url: character.referenceImageUrl,
-                detail: "high",
-              }
-            }
+            imageContent
           ]
         }
       ],

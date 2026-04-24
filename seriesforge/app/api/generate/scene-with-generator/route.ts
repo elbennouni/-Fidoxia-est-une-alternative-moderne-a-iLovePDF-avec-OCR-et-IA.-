@@ -6,9 +6,39 @@ import { getCurrentUser } from "@/lib/auth";
 import { buildScenePromptWithDNA } from "@/lib/agents/visualDNAAgent";
 import type { VisualDNA } from "@/lib/agents/visualDNAAgent";
 import { IMAGE_GENERATORS } from "@/lib/generators";
+import { readFile } from "fs/promises";
+import path from "path";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
+
+// Convert a local /uploads/... path OR external URL to a base64 data URI
+async function toReplicateImageUri(imageUrl: string): Promise<string | null> {
+  try {
+    // External URL — Replicate can use it directly if it's truly public
+    if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+      // DALL-E generated URLs are public — use directly
+      if (imageUrl.includes("oaidalleapiprodscus") || imageUrl.includes("openai")) {
+        return imageUrl;
+      }
+      // Other external URLs — use directly, may work
+      return imageUrl;
+    }
+
+    // Local file (/uploads/characters/xxx.png) — convert to base64
+    if (imageUrl.startsWith("/")) {
+      const filePath = path.join(process.cwd(), "public", imageUrl);
+      const fileBuffer = await readFile(filePath);
+      const ext = imageUrl.split(".").pop()?.toLowerCase() || "jpg";
+      const mimeType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+      return `data:${mimeType};base64,${fileBuffer.toString("base64")}`;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -103,12 +133,17 @@ export async function POST(req: NextRequest) {
 
       // Add reference image for img2img if available
       if (generator.supportsImgToImg && refImages.length > 0) {
-        // Use first character reference or environment
         const charRef = refImages.find(r => r.type === "character");
         const envRef = refImages.find(r => r.type === "environment");
-        if (charRef) replicateInput.image = charRef.url;
-        if (envRef && !charRef) replicateInput.image = envRef.url;
-        replicateInput.prompt_strength = 0.75;
+        const refSource = charRef || envRef;
+
+        if (refSource) {
+          const imageUri = await toReplicateImageUri(refSource.url);
+          if (imageUri) {
+            replicateInput.image = imageUri;
+            replicateInput.prompt_strength = 0.80; // higher = more faithful to prompt, lower = more like reference
+          }
+        }
       }
 
       if (generator.id === "flux-schnell") {
