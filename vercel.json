@@ -1,5 +1,0 @@
-{
-  "buildCommand": "cd seriesforge && npm install && npx prisma generate && npm run build",
-  "outputDirectory": "seriesforge/.next",
-  "installCommand": "cd seriesforge && npm install"
-}
