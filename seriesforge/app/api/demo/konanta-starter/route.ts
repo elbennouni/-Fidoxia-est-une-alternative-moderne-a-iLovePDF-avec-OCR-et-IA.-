@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { createKonantaStarterSeries } from "@/lib/demo/konantaTemplate";
 
-export async function POST(_req: NextRequest) {
+export async function POST() {
   try {
     const user = await getCurrentUser();
     if (!user) {
