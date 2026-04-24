@@ -1,11 +1,9 @@
 /**
  * Episode assembler using FFmpeg
- * 
- * Pipeline:
- * 1. For each scene: overlay voice audio on video (or image + voice → video)
- * 2. Concatenate all scene clips
- * 3. Mix background music at configured volume
- * 4. Output final MP4 9:16
+ * Fixes:
+ * - Audio not cutting off at 18s
+ * - Background music looping for full duration
+ * - Proper audio track handling per scene
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -30,37 +28,48 @@ async function ensureDir(dir: string) {
 async function downloadToFile(url: string, destPath: string): Promise<boolean> {
   try {
     if (!url) return false;
-
-    // base64 data URI
     if (url.startsWith("data:")) {
       const base64Data = url.split(",")[1];
       if (!base64Data) return false;
       await writeFile(destPath, Buffer.from(base64Data, "base64"));
       return true;
     }
-    // External URL
     if (url.startsWith("http://") || url.startsWith("https://")) {
       const res = await fetch(url);
       if (!res.ok) return false;
-      const buffer = Buffer.from(await res.arrayBuffer());
-      await writeFile(destPath, buffer);
+      await writeFile(destPath, Buffer.from(await res.arrayBuffer()));
       return true;
     }
-    // Local file
     if (url.startsWith("/")) {
-      const srcPath = path.join(PUBLIC_DIR, url);
-      const buffer = await readFile(srcPath);
-      await writeFile(destPath, buffer);
+      await writeFile(destPath, await readFile(path.join(PUBLIC_DIR, url)));
       return true;
     }
     return false;
-  } catch {
-    return false;
-  }
+  } catch { return false; }
 }
 
 async function fileExists(p: string): Promise<boolean> {
   try { await access(p); return true; } catch { return false; }
+}
+
+async function getAudioDuration(filePath: string): Promise<number> {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${filePath}"`,
+      { timeout: 10000 }
+    );
+    return parseFloat(stdout.trim()) || 0;
+  } catch { return 0; }
+}
+
+async function getVideoDuration(filePath: string): Promise<number> {
+  try {
+    const { stdout } = await execAsync(
+      `ffprobe -v quiet -show_entries format=duration -of csv=p=0 "${filePath}"`,
+      { timeout: 10000 }
+    );
+    return parseFloat(stdout.trim()) || 0;
+  } catch { return 0; }
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -72,10 +81,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const episode = await prisma.episode.findFirst({
       where: { id, series: { userId: user.id } },
-      include: {
-        scenes: { orderBy: { sceneNumber: "asc" } },
-        series: true,
-      },
+      include: { scenes: { orderBy: { sceneNumber: "asc" } }, series: true },
     });
 
     if (!episode) return NextResponse.json({ error: "Épisode non trouvé" }, { status: 404 });
@@ -89,161 +95,182 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const sceneClips: string[] = [];
 
-    // Process each scene
+    // ─── PROCESS EACH SCENE ──────────────────────────────────────────
     for (const scene of episode.scenes) {
-      const sceneNum = scene.sceneNumber;
+      const n = scene.sceneNumber;
       const hasVideo = !!scene.videoUrl;
       const hasImage = !!scene.imageUrl;
       const hasVoice = !!scene.voiceUrl;
-
-      let sceneOutputPath = path.join(sessionDir, `scene-${sceneNum}.mp4`);
+      const sceneOutPath = path.join(sessionDir, `scene-${n}.mp4`);
 
       if (hasVideo) {
-        // Download video
-        const videoPath = path.join(sessionDir, `video-${sceneNum}.mp4`);
-        const downloaded = await downloadToFile(scene.videoUrl!, videoPath);
+        const videoPath = path.join(sessionDir, `video-${n}.mp4`);
+        const vidOk = await downloadToFile(scene.videoUrl!, videoPath);
+        if (!vidOk) continue;
 
-        if (downloaded) {
-          if (hasVoice) {
-            // Download voice
-            const voicePath = path.join(sessionDir, `voice-${sceneNum}.wav`);
-            const voiceDownloaded = await downloadToFile(scene.voiceUrl!, voicePath);
+        if (hasVoice) {
+          const voicePath = path.join(sessionDir, `voice-${n}.mp3`);
+          const voiceOk = await downloadToFile(scene.voiceUrl!, voicePath);
 
-            if (voiceDownloaded) {
-              // Mix voice onto video
+          if (voiceOk) {
+            const vidDur = await getVideoDuration(videoPath);
+            const voiceDur = await getAudioDuration(voicePath);
+            // Use the LONGER of video vs voice duration so nothing gets cut
+            const finalDur = Math.max(vidDur, voiceDur);
+
+            // Encode video (loop if shorter than voice), mix voice on top
+            await execAsync(
+              `ffmpeg -y ` +
+              `-stream_loop -1 -t ${finalDur} -i "${videoPath}" ` +
+              `-i "${voicePath}" ` +
+              `-filter_complex ` +
+              `"[0:a]volume=0.3[origvol];[1:a]volume=1.0[voicevol];[origvol][voicevol]amix=inputs=2:duration=longest:dropout_transition=0[aout]" ` +
+              `-map 0:v -map "[aout]" ` +
+              `-c:v libx264 -c:a aac -b:a 192k -t ${finalDur} -pix_fmt yuv420p ` +
+              `"${sceneOutPath}" 2>&1`,
+              { timeout: 120000 }
+            ).catch(async (e) => {
+              console.error(`Scene ${n} video+voice error:`, e.stderr?.slice(0, 200));
+              // Fallback: video only with voice replacing audio
               await execAsync(
                 `ffmpeg -y -i "${videoPath}" -i "${voicePath}" ` +
-                `-filter_complex "[1:a]volume=1.0[voice];[0:a][voice]amix=inputs=2:duration=first:dropout_transition=2[aout]" ` +
-                `-map 0:v -map "[aout]" -c:v copy -c:a aac -shortest "${sceneOutputPath}" 2>&1`,
-                { timeout: 60000 }
-              ).catch(async () => {
-                // Fallback: replace audio entirely with voice
-                await execAsync(
-                  `ffmpeg -y -i "${videoPath}" -i "${voicePath}" ` +
-                  `-map 0:v -map 1:a -c:v copy -c:a aac -shortest "${sceneOutputPath}" 2>&1`,
-                  { timeout: 60000 }
-                );
-              });
-            } else {
-              // Keep video as-is
-              sceneOutputPath = videoPath;
-            }
+                `-map 0:v -map 1:a -c:v libx264 -c:a aac -b:a 192k ` +
+                `-t ${Math.max(vidDur, voiceDur)} -pix_fmt yuv420p "${sceneOutPath}" 2>&1`,
+                { timeout: 120000 }
+              ).catch(() => {});
+            });
           } else {
-            // No voice, just use video
-            sceneOutputPath = videoPath;
+            // Voice download failed — use video as-is but re-encode
+            await execAsync(
+              `ffmpeg -y -i "${videoPath}" -c:v libx264 -c:a aac -pix_fmt yuv420p "${sceneOutPath}" 2>&1`,
+              { timeout: 60000 }
+            ).catch(() => {});
           }
-
-          if (await fileExists(sceneOutputPath)) {
-            sceneClips.push(sceneOutputPath);
-          }
+        } else {
+          // No voice — re-encode video for consistent codec
+          await execAsync(
+            `ffmpeg -y -i "${videoPath}" -c:v libx264 -c:a aac -pix_fmt yuv420p "${sceneOutPath}" 2>&1`,
+            { timeout: 60000 }
+          ).catch(() => {});
         }
+
+        if (await fileExists(sceneOutPath)) sceneClips.push(sceneOutPath);
+
       } else if (hasImage) {
-        // No video — create a clip from image (5s still)
-        const imagePath = path.join(sessionDir, `image-${sceneNum}.jpg`);
-        const downloaded = await downloadToFile(scene.imageUrl!, imagePath);
+        const imagePath = path.join(sessionDir, `image-${n}.jpg`);
+        const imgOk = await downloadToFile(scene.imageUrl!, imagePath);
+        if (!imgOk) continue;
 
-        if (downloaded) {
-          const duration = hasVoice ? 0 : 5; // duration based on voice or 5s default
+        if (hasVoice) {
+          const voicePath = path.join(sessionDir, `voice-${n}.mp3`);
+          const voiceOk = await downloadToFile(scene.voiceUrl!, voicePath);
 
-          if (hasVoice) {
-            const voicePath = path.join(sessionDir, `voice-${sceneNum}.wav`);
-            const voiceDownloaded = await downloadToFile(scene.voiceUrl!, voicePath);
+          if (voiceOk) {
+            const voiceDur = await getAudioDuration(voicePath);
+            const duration = voiceDur > 0 ? voiceDur : 5;
 
-            if (voiceDownloaded) {
-              // Image + voice → video clip
-              await execAsync(
-                `ffmpeg -y -loop 1 -i "${imagePath}" -i "${voicePath}" ` +
-                `-c:v libx264 -tune stillimage -c:a aac -b:a 128k ` +
-                `-vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1" ` +
-                `-shortest -pix_fmt yuv420p "${sceneOutputPath}" 2>&1`,
-                { timeout: 60000 }
-              );
-            }
+            // Image + voice → video (image shown for full voice duration)
+            await execAsync(
+              `ffmpeg -y -loop 1 -i "${imagePath}" -i "${voicePath}" ` +
+              `-vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=24" ` +
+              `-c:v libx264 -tune stillimage -c:a aac -b:a 192k ` +
+              `-t ${duration + 0.5} -pix_fmt yuv420p "${sceneOutPath}" 2>&1`,
+              { timeout: 120000 }
+            ).catch((e) => console.error(`Scene ${n} image+voice error:`, e.stderr?.slice(0, 200)));
           } else {
-            // Image only → 5s clip
+            // Image only 5s
             await execAsync(
               `ffmpeg -y -loop 1 -i "${imagePath}" -t 5 ` +
-              `-c:v libx264 -tune stillimage ` +
-              `-vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1" ` +
-              `-pix_fmt yuv420p "${sceneOutputPath}" 2>&1`,
-              { timeout: 30000 }
-            );
+              `-vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=24" ` +
+              `-c:v libx264 -tune stillimage -c:a aac -b:a 192k -pix_fmt yuv420p "${sceneOutPath}" 2>&1`,
+              { timeout: 60000 }
+            ).catch(() => {});
           }
-
-          if (await fileExists(sceneOutputPath)) {
-            sceneClips.push(sceneOutputPath);
-          }
+        } else {
+          // Image only 5s
+          await execAsync(
+            `ffmpeg -y -loop 1 -i "${imagePath}" -t 5 ` +
+            `-vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=24" ` +
+            `-c:v libx264 -tune stillimage -c:a aac -b:a 192k -pix_fmt yuv420p "${sceneOutPath}" 2>&1`,
+            { timeout: 60000 }
+          ).catch(() => {});
         }
+
+        if (await fileExists(sceneOutPath)) sceneClips.push(sceneOutPath);
       }
     }
 
     if (sceneClips.length === 0) {
       return NextResponse.json({
-        error: "Aucune scène avec vidéo ou image trouvée. Générez d'abord le storyboard et les vidéos."
+        error: "Aucune scène assemblée. Vérifiez que les images ou vidéos sont générées."
       }, { status: 400 });
     }
 
-    // Create concat list
+    // ─── CONCATENATE ALL SCENES ───────────────────────────────────────
     const concatListPath = path.join(sessionDir, "concat.txt");
-    const concatContent = sceneClips.map(f => `file '${f}'`).join("\n");
-    await writeFile(concatListPath, concatContent);
+    await writeFile(concatListPath, sceneClips.map(f => `file '${f}'`).join("\n"));
 
-    // Concatenate all scenes
     const concatenatedPath = path.join(sessionDir, "concatenated.mp4");
     await execAsync(
+      // Re-encode during concat to ensure consistent audio/video streams
       `ffmpeg -y -f concat -safe 0 -i "${concatListPath}" ` +
-      `-c:v libx264 -c:a aac -b:a 128k -pix_fmt yuv420p "${concatenatedPath}" 2>&1`,
-      { timeout: 300000 }
+      `-c:v libx264 -c:a aac -b:a 192k -pix_fmt yuv420p "${concatenatedPath}" 2>&1`,
+      { timeout: 600000 }
     );
 
-    // Mix background music if available
+    const totalDuration = await getVideoDuration(concatenatedPath);
+
+    // ─── MIX BACKGROUND MUSIC ─────────────────────────────────────────
     const outputFileName = `episode-${id.slice(0, 8)}-${sessionId}.mp4`;
     const outputPath = path.join(ASSEMBLED_DIR, outputFileName);
 
     if (episode.bgMusicUrl) {
       const musicPath = path.join(sessionDir, "bgmusic.mp3");
-      const musicDownloaded = await downloadToFile(episode.bgMusicUrl, musicPath);
+      const musicOk = await downloadToFile(episode.bgMusicUrl, musicPath);
 
-      if (musicDownloaded) {
+      if (musicOk && totalDuration > 0) {
         const musicVolume = episode.bgMusicVolume ?? 0.2;
-        // Mix: video audio + looped background music
+        // Loop music for the FULL duration of the episode, then mix at configured volume
         await execAsync(
-          `ffmpeg -y -i "${concatenatedPath}" -stream_loop -1 -i "${musicPath}" ` +
-          `-filter_complex "[1:a]volume=${musicVolume}[music];[0:a][music]amix=inputs=2:duration=first:dropout_transition=3[aout]" ` +
-          `-map 0:v -map "[aout]" -c:v copy -c:a aac -b:a 192k -shortest "${outputPath}" 2>&1`,
-          { timeout: 300000 }
+          `ffmpeg -y ` +
+          `-i "${concatenatedPath}" ` +
+          `-stream_loop -1 -t ${totalDuration} -i "${musicPath}" ` +
+          `-filter_complex ` +
+          `"[0:a]volume=1.0[speech];[1:a]volume=${musicVolume}[music];[speech][music]amix=inputs=2:duration=first:dropout_transition=0[aout]" ` +
+          `-map 0:v -map "[aout]" ` +
+          `-c:v copy -c:a aac -b:a 192k -t ${totalDuration} ` +
+          `"${outputPath}" 2>&1`,
+          { timeout: 600000 }
         );
       } else {
-        // No music download, use concatenated
         await execAsync(`cp "${concatenatedPath}" "${outputPath}"`, { timeout: 30000 });
       }
     } else {
       await execAsync(`cp "${concatenatedPath}" "${outputPath}"`, { timeout: 30000 });
     }
 
-    // Clean up tmp files
-    try {
-      await execAsync(`rm -rf "${sessionDir}"`);
-    } catch {}
+    // Verify output exists
+    if (!await fileExists(outputPath)) {
+      throw new Error("Le fichier de sortie n'a pas été créé");
+    }
+
+    // Get final duration for confirmation
+    const finalDuration = await getVideoDuration(outputPath);
+
+    // Cleanup
+    try { await execAsync(`rm -rf "${sessionDir}"`, { timeout: 10000 }); } catch {}
 
     const outputUrl = `/assembled/${outputFileName}`;
-
-    // Save assembled URL to episode
-    await prisma.episode.update({
-      where: { id },
-      data: {
-        status: "assembled",
-        // Store assembled URL in script field as metadata for now
-      } as never,
-    });
 
     return NextResponse.json({
       success: true,
       outputUrl,
       fileName: outputFileName,
       sceneCount: sceneClips.length,
+      totalScenes: episode.scenes.length,
       hasBgMusic: !!episode.bgMusicUrl,
-      message: `Épisode assemblé avec ${sceneClips.length} scènes !`,
+      durationSeconds: Math.round(finalDuration),
+      message: `Épisode assemblé : ${sceneClips.length} scènes · ${Math.round(finalDuration)}s · ${episode.bgMusicUrl ? "avec musique de fond" : "sans musique"}`,
     });
 
   } catch (error) {
