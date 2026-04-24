@@ -32,13 +32,31 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
-    const fileName = `bg-music-${uuidv4()}.${ext}`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "music");
+    const fileName = `bg-music-${uuidv4().slice(0, 8)}.${ext}`;
 
-    await mkdir(uploadDir, { recursive: true });
-    await writeFile(path.join(uploadDir, fileName), buffer);
+    // Try Fal.ai storage (permanent on Vercel)
+    let bgMusicUrl = "";
+    const falKey = process.env.FAL_API_KEY;
+    if (falKey) {
+      try {
+        const mime = ext === "mp3" ? "audio/mpeg" : ext === "wav" ? "audio/wav" : ext === "ogg" ? "audio/ogg" : "audio/mpeg";
+        const blob = new Blob([new Uint8Array(buffer)], { type: mime });
+        const fd = new FormData();
+        fd.append("file", blob, fileName);
+        const res = await fetch("https://fal.run/fal-ai/storage/upload", {
+          method: "POST", headers: { "Authorization": `Key ${falKey}` }, body: fd,
+        });
+        if (res.ok) { const d = await res.json(); bgMusicUrl = d.url || ""; }
+      } catch {}
+    }
 
-    const bgMusicUrl = `/uploads/music/${fileName}`;
+    // Fallback: local storage
+    if (!bgMusicUrl) {
+      const uploadDir = path.join(process.cwd(), "public", "uploads", "music");
+      await mkdir(uploadDir, { recursive: true });
+      await writeFile(path.join(uploadDir, fileName), buffer);
+      bgMusicUrl = `/uploads/music/${fileName}`;
+    }
 
     await prisma.episode.update({
       where: { id },

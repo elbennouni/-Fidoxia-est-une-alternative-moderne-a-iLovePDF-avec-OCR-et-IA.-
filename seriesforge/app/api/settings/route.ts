@@ -29,11 +29,11 @@ export async function GET() {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const env = await readEnv();
-    // Return masked values
+    const fileEnv = await readEnv();
+    const allKeys = ["OPENAI_API_KEY","REPLICATE_API_TOKEN","FAL_API_KEY","HEYGEN_API_KEY","TOGETHER_API_KEY","HUGGINGFACE_API_KEY","STABILITY_API_KEY","NANOBANA_API_KEY","ELEVENLABS_API_KEY"];
     const masked: Record<string, string> = {};
-    for (const [k, v] of Object.entries(env)) {
-      if (k === "DATABASE_URL" || k === "JWT_SECRET" || k === "NEXT_PUBLIC_APP_URL") continue;
+    for (const k of allKeys) {
+      const v = process.env[k] || fileEnv[k] || "";
       masked[k] = v ? `${v.slice(0, 8)}${"*".repeat(Math.max(0, v.length - 8))}` : "";
     }
     return NextResponse.json({ keys: masked });
