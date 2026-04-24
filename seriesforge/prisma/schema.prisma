@@ -42,6 +42,7 @@ model Character {
   heygenVoiceId       String?
   referenceImageUrl   String?
   consistencyPrompt   String
+  visualDNA           String?
   createdAt           DateTime @default(now())
   series              Series   @relation(fields: [seriesId], references: [id], onDelete: Cascade)
 }

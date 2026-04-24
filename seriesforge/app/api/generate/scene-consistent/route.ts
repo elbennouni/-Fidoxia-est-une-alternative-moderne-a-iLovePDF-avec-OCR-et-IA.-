@@ -1,0 +1,100 @@
+import { NextRequest, NextResponse } from "next/server";
+import OpenAI from "openai";
+import { prisma } from "@/lib/db/prisma";
+import { getCurrentUser } from "@/lib/auth";
+import { buildScenePromptWithDNA } from "@/lib/agents/visualDNAAgent";
+import type { VisualDNA } from "@/lib/agents/visualDNAAgent";
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export async function POST(req: NextRequest) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { sceneId } = await req.json();
+
+    const scene = await prisma.scene.findFirst({
+      where: { id: sceneId, episode: { series: { userId: user.id } } },
+      include: {
+        episode: {
+          include: {
+            series: {
+              include: {
+                characters: true,
+                environments: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!scene) return NextResponse.json({ error: "Scene not found" }, { status: 404 });
+
+    const { series } = scene.episode;
+    const format = scene.episode.format;
+
+    const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
+
+    // Match environment
+    const matchedEnv = series.environments.find(e =>
+      scene.location?.toLowerCase().includes(e.name.toLowerCase())
+    ) || series.environments[0];
+
+    // Build character data with visual DNA
+    const characters = series.characters.map(c => ({
+      name: c.name,
+      consistencyPrompt: c.consistencyPrompt,
+      visualDNA: c.visualDNA ? JSON.parse(c.visualDNA) as VisualDNA : null,
+    }));
+
+    // Check if all characters have DNA, warn if not
+    const charsInScene = characters.filter(c =>
+      sceneCharNames.some(sc => sc.toLowerCase().includes(c.name.toLowerCase()))
+    );
+    const missingDNA = charsInScene.filter(c => !c.visualDNA).map(c => c.name);
+
+    // Build the scene prompt with full DNA
+    const prompt = buildScenePromptWithDNA({
+      characters,
+      sceneCharacters: sceneCharNames,
+      location: scene.location || "",
+      environmentDescription: matchedEnv?.description || scene.location || "",
+      action: scene.action || "",
+      emotion: scene.emotion || "",
+      camera: scene.camera || "medium shot",
+      visualStyle: series.visualStyle,
+      format,
+      lighting: matchedEnv?.lighting || undefined,
+      mood: matchedEnv?.mood || undefined,
+    });
+
+    const size = format === "9:16" ? "1024x1792" : "1792x1024";
+
+    const response = await openai.images.generate({
+      model: "dall-e-3",
+      prompt: prompt.slice(0, 4000),
+      n: 1,
+      size: size as "1024x1024" | "1024x1792" | "1792x1024",
+      quality: "hd",
+    });
+
+    const imageUrl = (response.data ?? [])[0]?.url;
+    if (!imageUrl) throw new Error("No image generated");
+
+    await prisma.scene.update({ where: { id: sceneId }, data: { imageUrl } });
+
+    return NextResponse.json({
+      imageUrl,
+      sceneId,
+      charactersUsed: charsInScene.map(c => c.name),
+      missingDNA,
+      environmentUsed: matchedEnv?.name || null,
+      promptLength: prompt.length,
+    });
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Generation failed";
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

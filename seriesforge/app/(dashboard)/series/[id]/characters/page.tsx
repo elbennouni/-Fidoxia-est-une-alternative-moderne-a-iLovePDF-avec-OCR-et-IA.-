@@ -4,9 +4,28 @@ import { useState, useEffect, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { ArrowLeft, Plus, Users, X, Loader2, ShieldCheck, Sparkles, Upload, Mic, FileJson, Trash2, AlertTriangle, Play, Square } from "lucide-react";
+import { ArrowLeft, Plus, Users, X, Loader2, ShieldCheck, Sparkles, Upload, Mic, FileJson, Trash2, AlertTriangle, Play, Square, Dna, ChevronDown, ChevronUp } from "lucide-react";
 import { CostBadge } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
+
+interface VisualDNA {
+  faceShape?: string;
+  eyeColor?: string;
+  eyeShape?: string;
+  skinTone?: string;
+  hairColor?: string;
+  hairStyle?: string;
+  bodyType?: string;
+  topClothing?: string;
+  bottomClothing?: string;
+  shoes?: string;
+  accessories?: string;
+  colorPalette?: string;
+  pixarFeatures?: string;
+  facialExpression?: string;
+  distinctiveFeature?: string;
+  lockedPrompt?: string;
+}
 
 interface Character {
   id: string;
@@ -17,6 +36,7 @@ interface Character {
   voiceProfile?: string;
   referenceImageUrl?: string;
   consistencyPrompt: string;
+  visualDNA?: string | null;
 }
 
 interface HeyGenVoice { voice_id: string; name: string; language: string; gender: string; }
@@ -63,9 +83,33 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
   const [showVoicePanel, setShowVoicePanel] = useState<string | null>(null);
   const [pendingUploadCharId, setPendingUploadCharId] = useState<string | null>(null);
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  const [generatingDNA, setGeneratingDNA] = useState<string | null>(null);
+  const [expandedDNA, setExpandedDNA] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({ name: "", physicalDescription: "", outfit: "", personality: "", voiceProfile: "" });
+
+  async function generateDNA(char: Character) {
+    setGeneratingDNA(char.id);
+    const t = toast.loading(`🧬 Génération ADN visuel de ${char.name}...`);
+    try {
+      const res = await fetch("/api/generate/character-sheet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ characterId: char.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.dismiss(t);
+      toast.success(`ADN visuel de ${char.name} généré ! Les images seront maintenant cohérentes.`);
+      fetchData();
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Erreur");
+    } finally {
+      setGeneratingDNA(null);
+    }
+  }
 
   function playVoicePreview(url: string, id: string) {
     if (playingVoice === id) {
@@ -372,14 +416,72 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
               <div className="p-4">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-bold text-white text-lg">{char.name}</h3>
-                  <button onClick={() => setSelectedChar(char)} className="p-1.5 bg-purple-600/20 hover:bg-purple-600/40 rounded-lg transition-all" title="Verrou cohérence"><ShieldCheck className="w-4 h-4 text-purple-400" /></button>
+                  <div className="flex gap-1">
+                    {char.visualDNA && (
+                      <span className="text-xs px-1.5 py-0.5 bg-green-600/20 border border-green-600/30 rounded-full text-green-400 flex items-center gap-0.5">
+                        <Dna className="w-2.5 h-2.5" /> ADN
+                      </span>
+                    )}
+                    <button onClick={() => setSelectedChar(char)} className="p-1.5 bg-purple-600/20 hover:bg-purple-600/40 rounded-lg transition-all" title="Verrou cohérence">
+                      <ShieldCheck className="w-4 h-4 text-purple-400" />
+                    </button>
+                  </div>
                 </div>
                 <p className="text-sm text-gray-300 mb-1 line-clamp-2">{char.physicalDescription}</p>
                 <p className="text-xs text-gray-500 mb-1 italic line-clamp-1">👗 {char.outfit}</p>
-                <p className="text-xs text-gray-500 mb-3 line-clamp-2">💬 {char.personality}</p>
+
+                {/* ADN Visuel */}
+                <div className="mb-3">
+                  {char.visualDNA ? (
+                    <div>
+                      <button
+                        onClick={() => setExpandedDNA(expandedDNA === char.id ? null : char.id)}
+                        className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300 transition-colors w-full"
+                      >
+                        <Dna className="w-3 h-3" />
+                        ADN visuel verrouillé
+                        {expandedDNA === char.id ? <ChevronUp className="w-3 h-3 ml-auto" /> : <ChevronDown className="w-3 h-3 ml-auto" />}
+                      </button>
+                      {expandedDNA === char.id && (
+                        <div className="mt-2 p-2 bg-green-900/10 border border-green-600/20 rounded-lg space-y-1">
+                          {(() => {
+                            const dna: VisualDNA = JSON.parse(char.visualDNA!);
+                            return (
+                              <>
+                                {dna.skinTone && <p className="text-xs text-gray-400">🎨 Peau: {dna.skinTone}</p>}
+                                {dna.hairColor && <p className="text-xs text-gray-400">💇 Cheveux: {dna.hairColor}, {dna.hairStyle}</p>}
+                                {dna.eyeColor && <p className="text-xs text-gray-400">👁 Yeux: {dna.eyeShape} {dna.eyeColor}</p>}
+                                {dna.topClothing && <p className="text-xs text-gray-400">👕 Haut: {dna.topClothing}</p>}
+                                {dna.accessories && <p className="text-xs text-gray-400">💎 Accès: {dna.accessories}</p>}
+                                {dna.distinctiveFeature && <p className="text-xs text-green-400 font-medium">⭐ Signature: {dna.distinctiveFeature}</p>}
+                                {dna.pixarFeatures && <p className="text-xs text-purple-400">🎬 Pixar: {dna.pixarFeatures}</p>}
+                              </>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div>
+                      <button
+                        onClick={() => generateDNA(char)}
+                        disabled={generatingDNA === char.id}
+                        className="flex items-center gap-1.5 text-xs text-yellow-400 hover:text-yellow-300 transition-colors disabled:opacity-50"
+                      >
+                        {generatingDNA === char.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Dna className="w-3 h-3" />}
+                        {generatingDNA === char.id ? "Génération ADN..." : "⚠ Générer ADN visuel (cohérence images)"}
+                      </button>
+                      <CostBadge cost={COSTS["gpt4o-qc"]} label="GPT" className="mt-1" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Voice */}
                 <div className="border-t border-[#2a2a3e] pt-3 flex items-center justify-between">
                   <div>{char.voiceProfile ? <p className="text-xs text-orange-300">🎙 {char.voiceProfile}</p> : <p className="text-xs text-gray-600">Pas de voix</p>}</div>
-                  <button onClick={() => setShowVoicePanel(char.id)} className="flex items-center gap-1 px-2 py-1 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-600/30 text-orange-300 text-xs rounded-lg transition-all"><Mic className="w-3 h-3" />{char.voiceProfile ? "Changer" : "HeyGen"}</button>
+                  <button onClick={() => setShowVoicePanel(char.id)} className="flex items-center gap-1 px-2 py-1 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-600/30 text-orange-300 text-xs rounded-lg transition-all">
+                    <Mic className="w-3 h-3" />{char.voiceProfile ? "Changer" : "HeyGen"}
+                  </button>
                 </div>
               </div>
             </div>
