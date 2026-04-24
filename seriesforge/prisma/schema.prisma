@@ -74,30 +74,31 @@ model Episode {
 }
 
 model Scene {
-  id             String   @id @default(cuid())
-  episodeId      String
-  sceneNumber    Int
-  timecode       String?
-  location       String?
-  charactersJson String?
-  action         String?
-  narration      String?
-  dialogue       String?
-  camera         String?
-  emotion        String?
-  soundDesign    String?
-  imagePrompt    String?
-  videoPrompt    String?
-  imageUrl       String?
-  videoUrl       String?
-  qualityScore   Int?
-  status         String   @default("pending")
-  audioPrompt    String?
-  voiceProvider  String?
-  voiceUrl       String?
-  validatedByUser Boolean @default(false)
-  createdAt      DateTime @default(now())
-  episode        Episode  @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  id              String         @id @default(cuid())
+  episodeId       String
+  sceneNumber     Int
+  timecode        String?
+  location        String?
+  charactersJson  String?
+  action          String?
+  narration       String?
+  dialogue        String?
+  camera          String?
+  emotion         String?
+  soundDesign     String?
+  imagePrompt     String?
+  videoPrompt     String?
+  imageUrl        String?
+  imageHistory    String?
+  videoUrl        String?
+  qualityScore    Int?
+  status          String         @default("pending")
+  audioPrompt     String?
+  voiceProvider   String?
+  voiceUrl        String?
+  validatedByUser Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+  episode         Episode        @relation(fields: [episodeId], references: [id], onDelete: Cascade)
 }
 
 model Asset {

@@ -83,7 +83,16 @@ export async function POST(req: NextRequest) {
     const imageUrl = (response.data ?? [])[0]?.url;
     if (!imageUrl) throw new Error("No image generated");
 
-    await prisma.scene.update({ where: { id: sceneId }, data: { imageUrl } });
+    // Save previous image to history
+    const currentScene = await prisma.scene.findUnique({ where: { id: sceneId }, select: { imageUrl: true, imageHistory: true } });
+    let history: Array<{ url: string; generator: string; createdAt: string }> = [];
+    try { history = JSON.parse(currentScene?.imageHistory || "[]"); } catch {}
+    if (currentScene?.imageUrl) {
+      history.unshift({ url: currentScene.imageUrl, generator: "DALL-E 3 HD", createdAt: new Date().toISOString() });
+      if (history.length > 10) history = history.slice(0, 10);
+    }
+
+    await prisma.scene.update({ where: { id: sceneId }, data: { imageUrl, imageHistory: JSON.stringify(history) } });
 
     return NextResponse.json({
       imageUrl,

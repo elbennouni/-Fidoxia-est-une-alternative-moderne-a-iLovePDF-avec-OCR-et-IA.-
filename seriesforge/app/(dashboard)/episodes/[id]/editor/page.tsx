@@ -6,12 +6,18 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import {
   ArrowLeft, Zap, Download, Loader2, Sparkles, CheckCircle,
-  Clock, AlertCircle, Image, Volume2, Video, ChevronDown, ChevronUp, Copy, FileJson
+  Clock, AlertCircle, Image, Volume2, Video, ChevronDown, ChevronUp, Copy, FileJson, X
 } from "lucide-react";
 import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
 import { ImageGeneratorPicker, VideoGeneratorPicker } from "@/components/ui/GeneratorPicker";
 import { IMAGE_GENERATORS, VIDEO_GENERATORS, getDefaultImageGenerator, setDefaultImageGenerator, getDefaultVideoGenerator, setDefaultVideoGenerator } from "@/lib/generators";
+
+interface ImageHistoryEntry {
+  url: string;
+  generator: string;
+  createdAt: string;
+}
 
 interface Scene {
   id: string;
@@ -32,6 +38,7 @@ interface Scene {
   qualityScore?: number;
   status: string;
   imageUrl?: string;
+  imageHistory?: string;
   videoUrl?: string;
 }
 
@@ -61,6 +68,8 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
   const [selectedVidGen, setSelectedVidGen] = useState(() => typeof window !== "undefined" ? getDefaultVideoGenerator() : "kling-15-std");
   const [defaultVidGen, setDefaultVidGen] = useState(() => typeof window !== "undefined" ? getDefaultVideoGenerator() : "kling-15-std");
   const [showGenPicker, setShowGenPicker] = useState(false);
+  const [showPipelineConfirm, setShowPipelineConfirm] = useState(false);
+  const [showImageHistory, setShowImageHistory] = useState<string | null>(null); // scene id
 
   useEffect(() => { fetchEpisode(); }, [id]);
 
@@ -76,7 +85,43 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
     }
   }
 
+  async function restoreImage(sceneId: string, imageUrl: string, historyIndex: number) {
+    try {
+      const res = await fetch(`/api/scenes/${sceneId}/restore-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageUrl, historyIndex }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast.success("Image restaurée !");
+      setShowImageHistory(null);
+      fetchEpisode();
+    } catch { toast.error("Erreur restauration"); }
+  }
+
+  async function deleteFromHistory(sceneId: string, historyIndex: number) {
+    try {
+      const res = await fetch(`/api/scenes/${sceneId}/restore-image`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ historyIndex }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      toast.success("Image supprimée de l'historique");
+      fetchEpisode();
+    } catch { toast.error("Erreur suppression"); }
+  }
+
+  function confirmRunPipeline() {
+    if (episode && episode.scenes.length > 0) {
+      setShowPipelineConfirm(true);
+    } else {
+      runPipeline();
+    }
+  }
+
   async function runPipeline() {
+    setShowPipelineConfirm(false);
     setRunning(true);
     const t = toast.loading("🎬 Pipeline IA en cours (2-3 min)...", { duration: 200000 });
     try {
@@ -189,6 +234,11 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
   );
   if (!episode) return null;
 
+  // Get image history for a scene
+  function getHistory(scene: Scene): ImageHistoryEntry[] {
+    try { return JSON.parse(scene.imageHistory || "[]"); } catch { return []; }
+  }
+
   const statusIcon = episode.status === "complete" ? CheckCircle :
     episode.status === "generating" ? Loader2 : Clock;
   const StatusIcon = statusIcon;
@@ -198,6 +248,115 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="max-w-5xl mx-auto px-4 py-8">
+
+      {/* Pipeline Confirmation Modal */}
+      {showPipelineConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#13131a] border border-orange-600/40 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-2 bg-orange-600/20 rounded-xl">
+                <AlertCircle className="w-6 h-6 text-orange-400" />
+              </div>
+              <h2 className="text-xl font-bold text-white">Pipeline déjà généré</h2>
+            </div>
+            <div className="bg-orange-900/20 border border-orange-600/20 rounded-xl p-4 mb-5">
+              <p className="text-orange-200 text-sm mb-2">
+                ⚠️ Cet épisode a déjà <strong>{episode.scenes.length} scènes générées</strong>.
+              </p>
+              <p className="text-orange-300/80 text-sm">
+                Relancer le pipeline va <strong>supprimer toutes les scènes actuelles</strong> et en générer de nouvelles. Les images générées seront perdues.
+              </p>
+              {episode.scenes.some(s => s.imageUrl) && (
+                <p className="text-yellow-300 text-sm mt-2">
+                  💡 Les images générées seront sauvegardées dans l'historique par scène pour les retrouver après.
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowPipelineConfirm(false)}
+                className="flex-1 py-3 border border-[#2a2a3e] text-gray-300 hover:border-gray-400 rounded-xl transition-all font-medium"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={runPipeline}
+                className="flex-1 py-3 bg-orange-600 hover:bg-orange-700 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <Zap className="w-4 h-4" /> Oui, regénérer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Image History Modal */}
+      {showImageHistory && (() => {
+        const scene = episode.scenes.find(s => s.id === showImageHistory);
+        if (!scene) return null;
+        const history = getHistory(scene);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <div className="bg-[#13131a] border border-[#2a2a3e] rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl">
+              <div className="flex items-center justify-between p-5 border-b border-[#2a2a3e]">
+                <h2 className="text-xl font-bold text-white">
+                  Historique images — Scène {scene.sceneNumber}
+                </h2>
+                <button onClick={() => setShowImageHistory(null)} className="text-gray-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="overflow-y-auto flex-1 p-5 scrollbar-thin">
+                {/* Current image */}
+                {scene.imageUrl && (
+                  <div className="mb-5">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-xs px-2 py-0.5 bg-green-600/20 border border-green-600/30 rounded-full text-green-400 font-medium">✅ Image actuelle</span>
+                    </div>
+                    <img src={scene.imageUrl} alt="current" className="w-full max-h-64 object-contain rounded-xl border border-green-600/20" />
+                  </div>
+                )}
+
+                {history.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500 text-sm">
+                    Pas encore d'historique — les prochaines générations apparaîtront ici
+                  </div>
+                ) : (
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide mb-3">{history.length} versions précédentes</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {history.map((entry, idx) => (
+                        <div key={idx} className="group relative bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl overflow-hidden hover:border-purple-500/50 transition-all">
+                          <img src={entry.url} alt={`History ${idx}`} className="w-full aspect-video object-cover" />
+                          <div className="p-2">
+                            <p className="text-xs text-gray-400 truncate">{entry.generator}</p>
+                            <p className="text-xs text-gray-600">{new Date(entry.createdAt).toLocaleDateString("fr-FR")}</p>
+                          </div>
+                          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center gap-2">
+                            <button
+                              onClick={() => restoreImage(scene.id, entry.url, idx)}
+                              className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-lg transition-all"
+                            >
+                              ↩ Restaurer
+                            </button>
+                            <button
+                              onClick={() => deleteFromHistory(scene.id, idx)}
+                              className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-all"
+                            >
+                              🗑
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Header */}
       <div className="mb-6">
         <Link href={`/series/${episode.series.id}/episodes`} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-4 transition-colors w-fit">
@@ -231,10 +390,10 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
                 <FileJson className="w-4 h-4" /> Importer JSON
               </Link>
               <div className="flex flex-col items-end gap-1">
-                <button onClick={runPipeline} disabled={running} className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all">
-                  {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                  {running ? "Génération..." : "Générer Pipeline"}
-                </button>
+            <button onClick={confirmRunPipeline} disabled={running} className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-medium rounded-xl transition-all">
+                {running ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                {running ? "Génération..." : "Générer Pipeline"}
+              </button>
                 <CostBadge cost={COSTS["gpt4o-script"] + COSTS["gpt4o-artistic"] + (COSTS["gpt4o-qc"] * 8)} label="pipeline GPT" />
               </div>
               {episode.scenes.length > 0 && (
@@ -392,7 +551,7 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
                             </div>
                           )}
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                           <button
                             onClick={() => generateSceneImage(scene)}
                             disabled={generatingSceneImage === scene.id}
@@ -401,8 +560,20 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
                             {generatingSceneImage === scene.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                             {scene.imageUrl ? "Regénérer" : "Générer"}
                           </button>
+                          {scene.imageUrl && (() => {
+                            const histCount = getHistory(scene).length;
+                            return (
+                              <button
+                                onClick={() => setShowImageHistory(scene.id)}
+                                className="w-full flex items-center justify-center gap-1.5 py-1.5 bg-[#1e1e2e] hover:bg-[#2a2a3e] border border-[#2a2a3e] hover:border-gray-500 text-gray-400 hover:text-white text-xs rounded-xl transition-all"
+                              >
+                                <Clock className="w-3 h-3" />
+                                Historique {histCount > 0 ? `(${histCount})` : ""}
+                              </button>
+                            );
+                          })()}
                           <div className="flex justify-center items-center gap-1.5">
-                            <span className="text-xs text-gray-500 truncate max-w-[80px]">{IMAGE_GENERATORS.find(g => g.id === selectedImgGen)?.name.split(" ")[0]}</span>
+                            <span className="text-xs text-gray-600 truncate max-w-[70px]">{IMAGE_GENERATORS.find(g => g.id === selectedImgGen)?.name.split(" ")[0]}</span>
                             <CostBadge cost={IMAGE_GENERATORS.find(g => g.id === selectedImgGen)?.pricePerImage || 0.08} label="img" />
                           </div>
                         </div>
