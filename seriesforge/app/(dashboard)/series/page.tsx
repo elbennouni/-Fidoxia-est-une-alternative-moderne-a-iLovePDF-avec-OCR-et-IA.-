@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { Plus, Tv2, ArrowRight, Loader2, X, Trash2, AlertTriangle } from "lucide-react";
+import { Plus, Tv2, ArrowRight, Loader2, X, Trash2, AlertTriangle, Palette } from "lucide-react";
+import { VISUAL_STYLE_PRESETS } from "@/lib/visualStyles";
 
 interface Series {
   id: string;
@@ -17,11 +18,8 @@ interface Series {
   createdAt: string;
 }
 
-const VISUAL_STYLES = [
-  "Pixar 3D cinematic","2D anime style","Studio Ghibli watercolor","Marvel comic book style",
-  "Realistic CGI","Claymation","Dark gothic animated","Pixar 3D cinematic reality TV",
-  "South Park flat cartoon","Disney classic animated",
-];
+// Built from visual style presets
+const VISUAL_STYLES = VISUAL_STYLE_PRESETS.map(s => ({ id: s.id, name: s.name, emoji: s.emoji, prompt: s.promptKeywords }));
 const TONES = [
   "funny, comedic","dramatic, serious","adventure, epic","romantic, emotional",
   "thriller, suspense","horror, dark","family-friendly, wholesome","satirical, political",
@@ -38,7 +36,20 @@ export default function SeriesPage() {
   const [deleting, setDeleting] = useState(false);
   const [form, setForm] = useState({ title: "", description: "", visualStyle: "", tone: "", defaultFormat: "9:16" });
 
-  useEffect(() => { fetchSeries(); }, []);
+  // Load pre-selected style from Styles page
+  useEffect(() => {
+    fetchSeries();
+    const savedStyle = localStorage.getItem("sf_selected_style");
+    if (savedStyle) {
+      try {
+        const style = JSON.parse(savedStyle);
+        setForm(f => ({ ...f, visualStyle: style.promptKeywords }));
+        setShowForm(true);
+        localStorage.removeItem("sf_selected_style");
+        toast.success(`Style "${style.name}" pré-sélectionné !`);
+      } catch {}
+    }
+  }, []);
 
   async function fetchSeries() {
     try {
@@ -128,10 +139,15 @@ export default function SeriesPage() {
                 <textarea value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Brève description de la série..." rows={2} className="w-full px-4 py-3 bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 resize-none" />
               </div>
               <div>
-                <label className="block text-sm text-gray-300 mb-1">Style visuel *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm text-gray-300">Style visuel *</label>
+                  <Link href="/styles" className="text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1">
+                    <Palette className="w-3 h-3" /> Voir tous les styles
+                  </Link>
+                </div>
                 <select value={form.visualStyle} onChange={e => setForm({ ...form, visualStyle: e.target.value })} required className="w-full px-4 py-3 bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl text-white focus:outline-none focus:border-purple-500">
                   <option value="">Choisir le style...</option>
-                  {VISUAL_STYLES.map(s => <option key={s} value={s}>{s}</option>)}
+                  {VISUAL_STYLES.map(s => <option key={s.id} value={s.prompt}>{s.emoji} {s.name}</option>)}
                 </select>
               </div>
               <div>
