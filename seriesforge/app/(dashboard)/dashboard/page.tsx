@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { Plus, Tv2, Film, Sparkles, Zap, ArrowRight, Loader2 } from "lucide-react";
+import { Plus, Tv2, Film, Sparkles, Zap, ArrowRight, Loader2, RotateCcw } from "lucide-react";
 
 interface Series {
   id: string;
@@ -21,6 +21,7 @@ export default function DashboardPage() {
   const [series, setSeries] = useState<Series[]>([]);
   const [loading, setLoading] = useState(true);
   const [demoLoading, setDemoLoading] = useState(false);
+  const [seedLoading, setSeedLoading] = useState(false);
 
   useEffect(() => {
     fetchSeries();
@@ -36,6 +37,21 @@ export default function DashboardPage() {
       toast.error("Erreur chargement des séries");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function restoreKonanta() {
+    setSeedLoading(true);
+    try {
+      const res = await fetch("/api/seed/konanta", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.success(`Konanta restauré ! ${data.characters} personnages, ${data.sceneCount} scènes`);
+      router.push(`/series/${data.seriesId}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Échec de la restauration");
+    } finally {
+      setSeedLoading(false);
     }
   }
 
@@ -95,6 +111,35 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Restore Konanta Banner */}
+      <div className="mb-4 relative overflow-hidden bg-gradient-to-r from-green-900/40 via-emerald-900/30 to-green-900/40 border border-green-500/30 rounded-2xl p-6">
+        <div className="absolute inset-0 bg-gradient-to-br from-green-600/10 to-emerald-600/10" />
+        <div className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <RotateCcw className="w-5 h-5 text-green-400" />
+              <span className="text-green-400 font-semibold text-sm">RESTAURER</span>
+            </div>
+            <h2 className="text-xl font-bold text-white">Restaurer Konanta (personnages + épisode)</h2>
+            <p className="text-gray-300 text-sm mt-1">
+              Instantané : 5 personnages · 3 décors · 1 épisode complet · 8 scènes pré-configurées
+            </p>
+            <p className="text-gray-400 text-xs mt-1">Aucune clé API requise — données pré-écrites</p>
+          </div>
+          <button
+            onClick={restoreKonanta}
+            disabled={seedLoading}
+            className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition-all duration-200 whitespace-nowrap"
+          >
+            {seedLoading ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Restauration...</>
+            ) : (
+              <><RotateCcw className="w-4 h-4" /> Restaurer mes données</>
+            )}
+          </button>
+        </div>
+      </div>
+
       {/* Konanta Demo Banner */}
       <div className="mb-8 relative overflow-hidden bg-gradient-to-r from-purple-900/40 via-blue-900/30 to-purple-900/40 border border-purple-500/30 rounded-2xl p-6">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-600/10 to-blue-600/10" />
@@ -102,13 +147,13 @@ export default function DashboardPage() {
           <div>
             <div className="flex items-center gap-2 mb-1">
               <Zap className="w-5 h-5 text-yellow-400" />
-              <span className="text-yellow-400 font-semibold text-sm">DEMO</span>
+              <span className="text-yellow-400 font-semibold text-sm">DEMO IA</span>
             </div>
-            <h2 className="text-xl font-bold text-white">Générer le Démo Konanta</h2>
+            <h2 className="text-xl font-bold text-white">Générer le Démo Konanta (avec IA)</h2>
             <p className="text-gray-300 text-sm mt-1">
               Pipeline complet : 5 personnages · 8 scènes · narration · storyboard · plan audio · contrôle qualité
             </p>
-            <p className="text-gray-400 text-xs mt-1">Series: &quot;Les Marseillais à Konanta&quot; — Pixar 3D Reality TV</p>
+            <p className="text-gray-400 text-xs mt-1">Requiert clé OpenAI — Series: &quot;Les Marseillais à Konanta&quot; — Pixar 3D Reality TV</p>
           </div>
           <button
             onClick={generateKonantaDemo}
