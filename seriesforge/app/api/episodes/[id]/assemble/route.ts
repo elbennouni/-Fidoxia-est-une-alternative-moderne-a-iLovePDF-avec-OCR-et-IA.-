@@ -206,17 +206,72 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }, { status: 400 });
     }
 
+    // ─── NORMALIZE ALL SCENES to same format before concat ───────────────
+    const normalizedClips: string[] = [];
+    for (let i = 0; i < sceneClips.length; i++) {
+      const src = sceneClips[i];
+      const norm = path.join(sessionDir, `normalized-${i}.mp4`);
+      try {
+        await execAsync(
+          `ffmpeg -y -i "${src}" ` +
+          `-vf "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=24,format=yuv420p" ` +
+          `-c:v libx264 -preset fast -crf 23 ` +
+          `-c:a aac -ar 44100 -ac 2 -b:a 192k ` +
+          `"${norm}" 2>&1`,
+          { timeout: 120000 }
+        );
+        if (await fileExists(norm)) normalizedClips.push(norm);
+        else normalizedClips.push(src); // keep original if normalization failed
+      } catch {
+        // If normalization fails, try simpler re-encode
+        try {
+          await execAsync(
+            `ffmpeg -y -i "${src}" -c:v libx264 -c:a aac -ar 44100 -ac 2 -pix_fmt yuv420p "${norm}" 2>&1`,
+            { timeout: 60000 }
+          );
+          if (await fileExists(norm)) normalizedClips.push(norm);
+          else normalizedClips.push(src);
+        } catch {
+          normalizedClips.push(src);
+        }
+      }
+    }
+
     // ─── CONCATENATE ALL SCENES ───────────────────────────────────────
     const concatListPath = path.join(sessionDir, "concat.txt");
-    await writeFile(concatListPath, sceneClips.map(f => `file '${f}'`).join("\n"));
+    await writeFile(concatListPath, normalizedClips.map(f => `file '${f}'`).join("\n"));
 
     const concatenatedPath = path.join(sessionDir, "concatenated.mp4");
-    await execAsync(
-      // Re-encode during concat to ensure consistent audio/video streams
-      `ffmpeg -y -f concat -safe 0 -i "${concatListPath}" ` +
-      `-c:v libx264 -c:a aac -b:a 192k -pix_fmt yuv420p "${concatenatedPath}" 2>&1`,
-      { timeout: 600000 }
-    );
+
+    // Try concat demuxer first (fastest, requires same codec/resolution)
+    let concatSuccess = false;
+    try {
+      await execAsync(
+        `ffmpeg -y -f concat -safe 0 -i "${concatListPath}" -c copy "${concatenatedPath}" 2>&1`,
+        { timeout: 600000 }
+      );
+      if (await fileExists(concatenatedPath)) concatSuccess = true;
+    } catch {}
+
+    // Fallback: filter_complex concat (handles different resolutions/codecs)
+    if (!concatSuccess) {
+      try {
+        const filterInputs = normalizedClips.map((_, i) => `-i "${normalizedClips[i]}"`).join(" ");
+        const filterComplex = normalizedClips.map((_, i) => `[${i}:v][${i}:a]`).join("") +
+          `concat=n=${normalizedClips.length}:v=1:a=1[outv][outa]`;
+        await execAsync(
+          `ffmpeg -y ${filterInputs} ` +
+          `-filter_complex "${filterComplex}" ` +
+          `-map "[outv]" -map "[outa]" ` +
+          `-c:v libx264 -preset fast -crf 23 -c:a aac -ar 44100 -ac 2 -b:a 192k -pix_fmt yuv420p ` +
+          `"${concatenatedPath}" 2>&1`,
+          { timeout: 600000 }
+        );
+        if (await fileExists(concatenatedPath)) concatSuccess = true;
+      } catch (e2) {
+        throw new Error(`Concaténation échouée. Vérifiez que les scènes sont bien générées. Détail: ${e2 instanceof Error ? e2.message.slice(0, 200) : "FFmpeg error"}`);
+      }
+    }
 
     const totalDuration = await getVideoDuration(concatenatedPath);
 
