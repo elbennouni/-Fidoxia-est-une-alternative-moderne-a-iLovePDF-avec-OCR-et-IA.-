@@ -40,6 +40,7 @@ interface Scene {
   audioPrompt?: string;
   voiceProvider?: string;
   voiceUrl?: string;
+  action?: string;
 }
 
 interface Episode {
@@ -273,19 +274,28 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
     } finally { setGeneratingVoice(null); }
   }
 
+  // Get character voice ID from current state (refreshed after assignment)
+  function getCharVoiceId(charName: string): string | null {
+    const char = characters.find(c =>
+      c.name.toLowerCase() === charName.toLowerCase() ||
+      charName.toLowerCase().includes(c.name.toLowerCase())
+    );
+    return char?.heygenVoiceId || null;
+  }
+
   async function generateVoiceForScene(scene: Scene, text: string, characterName: string) {
-    const char = characters.find(c => c.name === characterName);
-    if (!char?.heygenVoiceId) {
-      toast.error(`Assignez d'abord une voix HeyGen à ${characterName}`);
+    const voiceId = getCharVoiceId(characterName);
+    if (!voiceId) {
+      toast.error(`Assignez d'abord une voix HeyGen à ${characterName} (section Casting ci-dessus)`, { duration: 5000 });
       return;
     }
     setGeneratingVoice(`${scene.id}-${characterName}`);
-    const t = toast.loading(`Génération voix de ${characterName} (Scène ${scene.sceneNumber})...`);
+    const t = toast.loading(`Génération voix de ${characterName}...`);
     try {
       const res = await fetch("/api/heygen/generate-voice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sceneId: scene.id, text, voiceId: char.heygenVoiceId, characterName }),
+        body: JSON.stringify({ sceneId: scene.id, text, voiceId, characterName }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -296,6 +306,42 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
         toast.success(`Voix de ${characterName} générée !`);
         fetchData();
       }
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Erreur");
+    } finally { setGeneratingVoice(null); }
+  }
+
+  // Generate all dialogues of a scene as a single combined audio
+  async function generateFullSceneAudio(scene: Scene) {
+    // Combine: narration + all dialogue lines
+    const parts: string[] = [];
+    if (scene.narration?.trim()) parts.push(scene.narration.trim());
+    if (scene.dialogue?.trim()) parts.push(scene.dialogue.trim());
+    const fullText = parts.join("\n\n");
+    if (!fullText) { toast.error("Pas de texte dans cette scène"); return; }
+
+    // Use narrator voice for full scene, or first character voice
+    const voiceId = narratorVoiceId || getCharVoiceId(
+      (JSON.parse(scene.charactersJson || "[]") as string[])[0] || ""
+    );
+    if (!voiceId) {
+      toast.error("Assignez une voix au Narrateur ou à un personnage d'abord", { duration: 5000 });
+      return;
+    }
+    setGeneratingVoice(`${scene.id}-full`);
+    const t = toast.loading(`Génération audio complet scène ${scene.sceneNumber}...`);
+    try {
+      const res = await fetch("/api/heygen/generate-voice", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sceneId: scene.id, text: fullText, voiceId, characterName: "Scène complète" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      toast.dismiss(t);
+      if (data.mock) toast("Mode démo", { icon: "ℹ️" });
+      else { toast.success(`Audio scène ${scene.sceneNumber} généré !`); fetchData(); }
     } catch (err) {
       toast.dismiss(t);
       toast.error(err instanceof Error ? err.message : "Erreur");
@@ -754,15 +800,27 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                   <div className="w-8 h-8 bg-orange-600/20 border border-orange-600/30 rounded-full flex items-center justify-center text-orange-300 font-bold text-sm flex-shrink-0">
                     {scene.sceneNumber}
                   </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-white text-sm">{scene.location || `Scène ${scene.sceneNumber}`}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-white text-sm truncate">{scene.location || `Scène ${scene.sceneNumber}`}</p>
                     {scene.timecode && <p className="text-xs text-gray-500">{scene.timecode}</p>}
                   </div>
-                  {scene.voiceUrl && (
-                    <span className="text-xs px-2 py-0.5 bg-green-600/20 border border-green-600/30 rounded-full text-green-400 flex items-center gap-1">
-                      <CheckCircle className="w-3 h-3" /> Audio généré
-                    </span>
-                  )}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {scene.voiceUrl ? (
+                      <span className="text-xs px-2 py-0.5 bg-green-600/20 border border-green-600/30 rounded-full text-green-400 flex items-center gap-1">
+                        <CheckCircle className="w-3 h-3" /> Audio ✅
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => generateFullSceneAudio(scene)}
+                        disabled={generatingVoice === `${scene.id}-full`}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-all"
+                        title="Génère un seul audio avec narration + tous les dialogues"
+                      >
+                        {generatingVoice === `${scene.id}-full` ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                        Générer tout l'audio
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 <div className="p-4 space-y-4">
@@ -828,7 +886,7 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                       <div className="space-y-2">
                         {dialogueLines.map((line, idx) => {
                           const char = characters.find(c => c.name.toLowerCase() === line.character.toLowerCase());
-                          const hasVoice = !!char?.heygenVoiceId;
+                          const hasVoice = !!getCharVoiceId(line.character);
                           return (
                             <div key={idx} className={`rounded-xl p-3 border flex items-start gap-3 ${hasVoice ? "bg-purple-900/10 border-purple-600/30" : "bg-[#1e1e2e] border-[#2a2a3e]"}`}>
                               {char?.referenceImageUrl ? (

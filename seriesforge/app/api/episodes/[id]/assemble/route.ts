@@ -29,6 +29,16 @@ async function ensureDir(dir: string) {
 
 async function downloadToFile(url: string, destPath: string): Promise<boolean> {
   try {
+    if (!url) return false;
+
+    // base64 data URI
+    if (url.startsWith("data:")) {
+      const base64Data = url.split(",")[1];
+      if (!base64Data) return false;
+      await writeFile(destPath, Buffer.from(base64Data, "base64"));
+      return true;
+    }
+    // External URL
     if (url.startsWith("http://") || url.startsWith("https://")) {
       const res = await fetch(url);
       if (!res.ok) return false;
