@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, useEffect, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import {
-  ArrowLeft, Volume2, Loader2, Copy, Music, Mic, Play, Sparkles,
-  ExternalLink, CheckCircle, X, Settings
+  ArrowLeft, Volume2, Loader2, Copy, Music, Mic, Play, Pause, Sparkles,
+  ExternalLink, CheckCircle, X, Settings, Square
 } from "lucide-react";
 
 interface HeyGenVoice {
@@ -63,6 +63,8 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   const [showVoicePicker, setShowVoicePicker] = useState<{ charId: string; charName: string } | null>(null);
   const [voiceFilter, setVoiceFilter] = useState("all");
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [playingAudio, setPlayingAudio] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => { fetchData(); fetchVoices(); }, [id]);
 
@@ -130,6 +132,37 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   }
 
   function copy(text: string) { navigator.clipboard.writeText(text); toast.success("Copié !"); }
+
+  function playAudio(url: string, id: string) {
+    if (playingAudio === id) {
+      audioRef.current?.pause();
+      setPlayingAudio(null);
+      return;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+    }
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    audio.play();
+    setPlayingAudio(id);
+    audio.onended = () => setPlayingAudio(null);
+    audio.onerror = () => { setPlayingAudio(null); toast.error("Lecture impossible"); };
+  }
+
+  function PlayButton({ url, id, size = "sm" }: { url: string; id: string; size?: "sm" | "md" }) {
+    const isPlaying = playingAudio === id;
+    const sizeClass = size === "md" ? "px-3 py-2 text-sm gap-2" : "px-2 py-1.5 text-xs gap-1";
+    return (
+      <button
+        onClick={() => playAudio(url, id)}
+        className={`flex items-center ${sizeClass} bg-green-600/20 hover:bg-green-600/40 border border-green-600/30 text-green-300 rounded-lg transition-all flex-shrink-0`}
+      >
+        {isPlaying ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
+        {isPlaying ? "Stop" : "Écouter"}
+      </button>
+    );
+  }
 
   function parseDialogueLines(dialogue: string): Array<{ character: string; line: string }> {
     const lines = dialogue.split("\n").filter(l => l.trim());
@@ -207,7 +240,7 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
               ) : filteredVoices.length === 0 ? (
                 <p className="text-gray-500 text-center py-8">Aucune voix trouvée</p>
               ) : filteredVoices.map(voice => (
-                <div key={voice.voice_id} className="flex items-center gap-3 p-3 bg-[#1e1e2e] border border-[#2a2a3e] hover:border-orange-500/50 rounded-xl transition-all">
+                <div key={voice.voice_id} className={`flex items-center gap-3 p-3 border rounded-xl transition-all ${playingAudio === `voice-${voice.voice_id}` ? "border-green-500/50 bg-green-900/10" : "bg-[#1e1e2e] border-[#2a2a3e] hover:border-orange-500/50"}`}>
                   <div className="flex-1">
                     <p className="font-medium text-white text-sm">{voice.name}</p>
                     <div className="flex gap-2 mt-0.5">
@@ -216,11 +249,13 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                       <span className="text-xs text-gray-400">{voice.gender === "male" ? "♂" : "♀"} {voice.gender}</span>
                     </div>
                   </div>
-                  {voice.preview_audio && (
-                    <audio controls src={voice.preview_audio} className="h-8 w-28" />
+                  {voice.preview_audio ? (
+                    <PlayButton url={voice.preview_audio} id={`voice-${voice.voice_id}`} />
+                  ) : (
+                    <span className="text-xs text-gray-600 px-2">Pas de preview</span>
                   )}
                   <button
-                    onClick={() => assignVoiceToCharacter(showVoicePicker.charId, voice)}
+                    onClick={() => assignVoiceToCharacter(showVoicePicker!.charId, voice)}
                     className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium rounded-lg transition-all flex-shrink-0"
                   >
                     Assigner
@@ -256,12 +291,14 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                 ) : (
                   <p className="text-xs text-gray-500 mb-2">Pas de voix</p>
                 )}
-                <button
-                  onClick={() => setShowVoicePicker({ charId: char.id, charName: char.name })}
-                  className="w-full py-1.5 text-xs bg-orange-600/20 hover:bg-orange-600/40 border border-orange-600/30 text-orange-300 rounded-lg transition-all"
-                >
-                  {char.heygenVoiceId ? "Changer" : "Assigner voix"}
-                </button>
+                <div className="flex flex-col gap-1.5">
+                  <button
+                    onClick={() => setShowVoicePicker({ charId: char.id, charName: char.name })}
+                    className="w-full py-1.5 text-xs bg-orange-600/20 hover:bg-orange-600/40 border border-orange-600/30 text-orange-300 rounded-lg transition-all"
+                  >
+                    {char.heygenVoiceId ? "Changer voix" : "Assigner voix"}
+                  </button>
+                </div>
               </div>
             ))}
           </div>
@@ -314,6 +351,12 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                       <div className="bg-blue-900/10 border border-blue-600/30 rounded-xl p-3 flex items-start gap-3">
                         <div className="flex-1">
                           <p className="text-sm text-blue-200 italic leading-relaxed">&ldquo;{scene.narration}&rdquo;</p>
+                          {scene.voiceUrl && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <PlayButton url={scene.voiceUrl} id={`narration-${scene.id}`} />
+                              <audio controls src={scene.voiceUrl} className="h-7 flex-1" />
+                            </div>
+                          )}
                         </div>
                         <button
                           onClick={() => generateVoiceForScene(scene, scene.narration!, "Narrateur")}
@@ -394,10 +437,13 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                   {/* Audio player if generated */}
                   {scene.voiceUrl && (
                     <div>
-                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1">
+                      <p className="text-xs text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1">
                         <Play className="w-3 h-3" /> Audio généré
                       </p>
-                      <audio controls src={scene.voiceUrl} className="w-full" />
+                      <div className="flex items-center gap-3 p-3 bg-green-900/10 border border-green-600/20 rounded-xl">
+                        <PlayButton url={scene.voiceUrl} id={`scene-audio-${scene.id}`} size="md" />
+                        <audio controls src={scene.voiceUrl} className="flex-1 h-8" />
+                      </div>
                     </div>
                   )}
                 </div>

@@ -4,7 +4,7 @@ import { useState, useEffect, use, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { ArrowLeft, Plus, Users, X, Loader2, ShieldCheck, Sparkles, Upload, Mic, FileJson, Trash2, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Plus, Users, X, Loader2, ShieldCheck, Sparkles, Upload, Mic, FileJson, Trash2, AlertTriangle, Play, Square } from "lucide-react";
 
 interface Character {
   id: string;
@@ -60,8 +60,25 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
   const [heygenVoices, setHeygenVoices] = useState<HeyGenVoice[]>([]);
   const [showVoicePanel, setShowVoicePanel] = useState<string | null>(null);
   const [pendingUploadCharId, setPendingUploadCharId] = useState<string | null>(null);
+  const [playingVoice, setPlayingVoice] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({ name: "", physicalDescription: "", outfit: "", personality: "", voiceProfile: "" });
+
+  function playVoicePreview(url: string, id: string) {
+    if (playingVoice === id) {
+      audioRef.current?.pause();
+      setPlayingVoice(null);
+      return;
+    }
+    if (audioRef.current) audioRef.current.pause();
+    const audio = new Audio(url);
+    audioRef.current = audio;
+    audio.play();
+    setPlayingVoice(id);
+    audio.onended = () => setPlayingVoice(null);
+    audio.onerror = () => { setPlayingVoice(null); toast.error("Lecture impossible"); };
+  }
 
   useEffect(() => { fetchData(); }, [seriesId]);
 
@@ -280,10 +297,24 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
             <div className="flex items-center justify-between mb-4"><h2 className="text-xl font-bold text-white flex items-center gap-2"><Mic className="w-5 h-5 text-orange-400" /> Voix HeyGen</h2><button onClick={() => setShowVoicePanel(null)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button></div>
             <div className="space-y-2">
               {heygenVoices.map(voice => (
-                <button key={voice.voice_id} onClick={() => assignVoice(showVoicePanel, voice.voice_id, voice.name)} className="w-full flex items-center justify-between p-3 bg-[#1e1e2e] border border-[#2a2a3e] hover:border-orange-500/50 rounded-xl transition-all text-left">
-                  <div><p className="font-medium text-white text-sm">{voice.name}</p><p className="text-xs text-gray-400">{voice.language} · {voice.gender}</p></div>
-                  <span className="text-xs px-2 py-0.5 bg-orange-600/20 border border-orange-600/30 rounded-full text-orange-300">Assigner</span>
-                </button>
+                <div key={voice.voice_id} className={`flex items-center gap-3 p-3 border rounded-xl transition-all ${playingVoice === voice.voice_id ? "border-green-500/50 bg-green-900/10" : "bg-[#1e1e2e] border-[#2a2a3e] hover:border-orange-500/50"}`}>
+                  <div className="flex-1">
+                    <p className="font-medium text-white text-sm">{voice.name}</p>
+                    <p className="text-xs text-gray-400">{voice.language === "fr" ? "🇫🇷" : "🇬🇧"} {voice.language} · {voice.gender === "male" ? "♂" : "♀"} {voice.gender}</p>
+                  </div>
+                  {(voice as unknown as { preview_audio?: string }).preview_audio && (
+                    <button
+                      onClick={() => playVoicePreview((voice as unknown as { preview_audio: string }).preview_audio, voice.voice_id)}
+                      className={`flex items-center gap-1 px-2 py-1.5 border rounded-lg text-xs transition-all flex-shrink-0 ${playingVoice === voice.voice_id ? "bg-green-600/20 border-green-600/30 text-green-300" : "bg-[#2a2a3e] border-[#3a3a4e] text-gray-300 hover:text-green-300 hover:border-green-500/50"}`}
+                    >
+                      {playingVoice === voice.voice_id ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}
+                      {playingVoice === voice.voice_id ? "Stop" : "Écouter"}
+                    </button>
+                  )}
+                  <button onClick={() => assignVoice(showVoicePanel, voice.voice_id, voice.name)} className="px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-medium rounded-lg transition-all flex-shrink-0">
+                    Assigner
+                  </button>
+                </div>
               ))}
             </div>
           </div>
