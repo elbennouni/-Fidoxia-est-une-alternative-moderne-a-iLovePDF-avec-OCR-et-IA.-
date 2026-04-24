@@ -151,22 +151,37 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
     toast.success(`${VIDEO_GENERATORS.find(g => g.id === id)?.name} défini par défaut`);
   }
 
+  // Models that use the dedicated character-consistent API
+  const CHARACTER_CONSISTENT_MODELS = ["ideogram-character", "instant-character", "minimax-subject"];
+
   async function generateSceneImage(scene: Scene) {
     setGeneratingSceneImage(scene.id);
     const gen = IMAGE_GENERATORS.find(g => g.id === selectedImgGen);
     const t = toast.loading(`Génération scène ${scene.sceneNumber} avec ${gen?.name || "DALL-E 3"}...`);
     try {
-      const res = await fetch("/api/generate/scene-with-generator", {
+      // Use the character-consistent API for models that support reference images properly
+      const isCharacterModel = CHARACTER_CONSISTENT_MODELS.includes(selectedImgGen);
+      const endpoint = isCharacterModel
+        ? "/api/generate/scene-character-consistent"
+        : "/api/generate/scene-with-generator";
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sceneId: scene.id, generatorId: selectedImgGen }),
+        body: JSON.stringify({
+          sceneId: scene.id,
+          generatorId: selectedImgGen,
+          model: selectedImgGen, // for scene-character-consistent
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.dismiss(t);
-      const withPhoto = data.charactersWithPhoto?.length > 0 ? ` · 📸 photo: ${data.charactersWithPhoto.join(", ")}` : "";
-      const withDNA = data.charactersWithDNA?.length > 0 ? ` · 🧬 ADN: ${data.charactersWithDNA.join(", ")}` : "";
-      toast.success(`Image scène ${scene.sceneNumber} générée !${withDNA}${withPhoto}`, { duration: 5000 });
+      const withRef = data.refImagesUsed?.length > 0 ? ` · 📸 ${data.refImagesUsed.join(", ")}` : "";
+      const withPhoto = data.charactersWithPhoto?.length > 0 ? ` · 📸 ${data.charactersWithPhoto.join(", ")}` : "";
+      const withDNA = data.charactersWithDNA?.length > 0 ? ` · 🧬 ${data.charactersWithDNA.join(", ")}` : "";
+      const noPhoto = data.charsWithoutPhoto?.length > 0 ? ` ⚠️ sans photo: ${data.charsWithoutPhoto.join(", ")}` : "";
+      toast.success(`Image scène ${scene.sceneNumber} ✅${withRef}${withDNA}${withPhoto}${noPhoto}`, { duration: 6000 });
       fetchEpisode();
     } catch (err) {
       toast.dismiss(t);
@@ -557,6 +572,17 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
                             {generatingSceneImage === scene.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                             {scene.imageUrl ? "Regénérer" : "Générer"}
                           </button>
+                          {CHARACTER_CONSISTENT_MODELS.includes(selectedImgGen) && (() => {
+                            const chars: string[] = JSON.parse(scene.charactersJson || "[]");
+                            if (chars.length > 0) {
+                              return (
+                                <p className="text-xs text-blue-400/70 text-center px-1">
+                                  📸 Photo requise dans Personnages
+                                </p>
+                              );
+                            }
+                            return null;
+                          })()}
                           {scene.imageUrl && (() => {
                             const histCount = getHistory(scene).length;
                             return (

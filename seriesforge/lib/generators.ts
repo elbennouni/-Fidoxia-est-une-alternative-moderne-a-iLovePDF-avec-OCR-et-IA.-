@@ -32,6 +32,54 @@ export interface VideoGenerator {
 
 export const IMAGE_GENERATORS: ImageGenerator[] = [
   {
+    id: "ideogram-character",
+    name: "Ideogram Character ⭐",
+    provider: "Fal.ai",
+    model: "fal-ai/ideogram/character",
+    description: "🎭 MEILLEUR pour cohérence personnage — passe ta photo → même visage garanti",
+    pricePerImage: 0.08,
+    quality: "ultra",
+    speed: "medium",
+    supportsImgToImg: true,
+    supportsReference: true,
+    style: "any",
+    free: false,
+    badge: "Cohérence visage",
+    apiKey: "FAL_API_KEY",
+  },
+  {
+    id: "instant-character",
+    name: "Instant Character",
+    provider: "Fal.ai",
+    model: "fal-ai/instant-character",
+    description: "🎭 Contrôle d'identité fort — photo référence → personnage cohérent",
+    pricePerImage: 0.05,
+    quality: "high",
+    speed: "medium",
+    supportsImgToImg: true,
+    supportsReference: true,
+    style: "any",
+    free: false,
+    badge: "Identité forte",
+    apiKey: "FAL_API_KEY",
+  },
+  {
+    id: "minimax-subject",
+    name: "MiniMax Subject Ref",
+    provider: "Fal.ai",
+    model: "fal-ai/minimax/image-01/subject-reference",
+    description: "🎭 Référence sujet — maintient l'apparence du personnage sur toutes les images",
+    pricePerImage: 0.04,
+    quality: "high",
+    speed: "medium",
+    supportsImgToImg: true,
+    supportsReference: true,
+    style: "any",
+    free: false,
+    badge: "Photo → Scène",
+    apiKey: "FAL_API_KEY",
+  },
+  {
     id: "dalle3-hd",
     name: "DALL-E 3 HD",
     provider: "OpenAI",
@@ -370,9 +418,9 @@ export const VIDEO_GENERATORS: VideoGenerator[] = [
 
 export function getDefaultImageGenerator(): string {
   if (typeof window !== "undefined") {
-    return localStorage.getItem("sf_default_img_gen") || "dalle3-hd";
+    return localStorage.getItem("sf_default_img_gen") || "ideogram-character";
   }
-  return "dalle3-hd";
+  return "ideogram-character";
 }
 
 export function setDefaultImageGenerator(id: string) {
