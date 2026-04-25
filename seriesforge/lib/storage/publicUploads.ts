@@ -44,21 +44,25 @@ async function uploadToFalStorage(buffer: Buffer, fileName: string, mimeType: st
   }
 }
 
-async function uploadToCatbox(buffer: Buffer, fileName: string, mimeType: string): Promise<string | null> {
+async function uploadToTmpFiles(buffer: Buffer, fileName: string, mimeType: string): Promise<string | null> {
   try {
     const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
     const formData = new FormData();
-    formData.append("reqtype", "fileupload");
-    formData.append("fileToUpload", blob, fileName);
+    formData.append("file", blob, fileName);
 
-    const res = await fetch("https://catbox.moe/user/api.php", {
+    const res = await fetch("https://tmpfiles.org/api/v1/upload", {
       method: "POST",
       body: formData,
     });
 
     if (!res.ok) return null;
-    const text = (await res.text()).trim();
-    return text.startsWith("http://") || text.startsWith("https://") ? text : null;
+    const data = await res.json() as { status?: string; data?: { url?: string } };
+    const pageUrl = data.data?.url;
+    if (!pageUrl) return null;
+
+    const match = pageUrl.match(/tmpfiles\.org\/(\d+)\/(.+)$/);
+    if (!match) return null;
+    return `https://tmpfiles.org/dl/${match[1]}/${match[2]}`;
   } catch {
     return null;
   }
@@ -78,15 +82,15 @@ export async function persistPublicAsset(params: {
   ext: string;
   fileNamePrefix?: string;
   mimeType?: string;
-}): Promise<{ url: string; storage: "fal" | "catbox" | "local" }> {
+}): Promise<{ url: string; storage: "fal" | "tmpfiles" | "local" }> {
   const { buffer, folder, ext, fileNamePrefix = folder, mimeType = guessMimeType(ext) } = params;
   const fileName = `${fileNamePrefix}-${uuidv4().slice(0, 8)}.${ext}`;
 
   const falUrl = await uploadToFalStorage(buffer, fileName, mimeType);
   if (falUrl) return { url: falUrl, storage: "fal" };
 
-  const catboxUrl = await uploadToCatbox(buffer, fileName, mimeType);
-  if (catboxUrl) return { url: catboxUrl, storage: "catbox" };
+  const tmpFilesUrl = await uploadToTmpFiles(buffer, fileName, mimeType);
+  if (tmpFilesUrl) return { url: tmpFilesUrl, storage: "tmpfiles" };
 
   const localUrl = await saveLocally(buffer, folder, ext);
   return { url: localUrl, storage: "local" };
@@ -96,7 +100,7 @@ export async function persistUserUpload(params: {
   buffer: Buffer;
   folder: string;
   originalFileName: string;
-}): Promise<{ url: string; fileName: string; storage: "fal" | "catbox" | "local" }> {
+}): Promise<{ url: string; fileName: string; storage: "fal" | "tmpfiles" | "local" }> {
   const ext = params.originalFileName.split(".").pop()?.toLowerCase() || "jpg";
   const fileNamePrefix = params.folder;
   const fileName = `${fileNamePrefix}-${uuidv4().slice(0, 8)}.${ext}`;
@@ -105,8 +109,8 @@ export async function persistUserUpload(params: {
   const falUrl = await uploadToFalStorage(params.buffer, fileName, mimeType);
   if (falUrl) return { url: falUrl, fileName, storage: "fal" };
 
-  const catboxUrl = await uploadToCatbox(params.buffer, fileName, mimeType);
-  if (catboxUrl) return { url: catboxUrl, fileName, storage: "catbox" };
+  const tmpFilesUrl = await uploadToTmpFiles(params.buffer, fileName, mimeType);
+  if (tmpFilesUrl) return { url: tmpFilesUrl, fileName, storage: "tmpfiles" };
 
   const localUrl = await saveLocally(params.buffer, params.folder, ext);
   return { url: localUrl, fileName, storage: "local" };
