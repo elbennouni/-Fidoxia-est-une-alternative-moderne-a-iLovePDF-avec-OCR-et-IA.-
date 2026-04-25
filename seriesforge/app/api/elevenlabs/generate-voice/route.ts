@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
+import { inferVoiceDirection } from "@/lib/audio/voiceDirection";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,6 +21,12 @@ export async function POST(req: NextRequest) {
       where: { id: sceneId, episode: { series: { userId: user.id } } },
     });
     if (!scene) return NextResponse.json({ error: "Scène non trouvée" }, { status: 404 });
+
+    const direction = inferVoiceDirection({
+      text,
+      emotion: scene.emotion,
+      audioPrompt: scene.audioPrompt,
+    });
 
     const apiKey = process.env.ELEVENLABS_API_KEY;
 
@@ -40,7 +47,7 @@ export async function POST(req: NextRequest) {
           model: "tts-1-hd",
           voice: voice as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer",
           input: text.trim().slice(0, 4096),
-          speed: 1.0,
+          speed: direction.speed,
         });
 
         const buffer = Buffer.from(await response.arrayBuffer());
@@ -68,10 +75,10 @@ export async function POST(req: NextRequest) {
         text: text.trim().slice(0, 5000),
         model_id: "eleven_multilingual_v2",
         voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.8,
-          style: 0.2,
-          use_speaker_boost: true,
+          stability: direction.stability,
+          similarity_boost: direction.similarityBoost,
+          style: direction.style,
+          use_speaker_boost: direction.useSpeakerBoost,
         },
       }),
     });
@@ -95,6 +102,7 @@ export async function POST(req: NextRequest) {
       audioUrl,
       character: characterName,
       engine: "elevenlabs-multilingual-v2",
+      intensity: direction.label,
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Erreur";

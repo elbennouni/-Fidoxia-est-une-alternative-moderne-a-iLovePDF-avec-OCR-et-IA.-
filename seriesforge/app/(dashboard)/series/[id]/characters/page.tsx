@@ -261,7 +261,11 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
 
   async function assignVoice(charId: string, voiceId: string, voiceName: string) {
     try {
-      await fetch(`/api/characters/${charId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ voiceProfile: voiceName }) });
+      await fetch(`/api/characters/${charId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ voiceProfile: voiceName, heygenVoiceId: voiceId }),
+      });
       toast.success(`Voix "${voiceName}" assignée !`);
       setShowVoicePanel(null); fetchData();
     } catch { toast.error("Erreur"); }

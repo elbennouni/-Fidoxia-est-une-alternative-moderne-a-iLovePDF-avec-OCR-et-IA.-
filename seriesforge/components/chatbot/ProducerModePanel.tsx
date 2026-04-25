@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Bot, ChevronDown, ChevronUp, Clapperboard, MessageSquareText, Mic, ShieldCheck, Sparkles, Users, Wand2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Bot, ChevronDown, ChevronUp, Clapperboard, Loader2, MessageSquareText, Mic, Send, ShieldCheck, Sparkles, Users, Wand2 } from "lucide-react";
 import { buildProducerPlan, AGENT_BLUEPRINT, type ProducerAgentStatus, type ProducerPlan } from "@/lib/chatbot/producerMode";
 
 type Mode = "audio" | "scenario-json" | "brief";
+type ChatMessage = { role: "user" | "producer"; text: string };
 
 export default function ProducerModePanel({ publicPreview = false }: { publicPreview?: boolean }) {
   const [open, setOpen] = useState(true);
@@ -14,6 +15,7 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
   const [remotePlan, setRemotePlan] = useState<ProducerPlan | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [loadingDemoScenario, setLoadingDemoScenario] = useState(false);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
   const plan = useMemo<ProducerPlan>(() => buildProducerPlan({
     mode,
@@ -37,54 +39,54 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
         : "Créer un épisode dramatique sur la plage avec confrontation, totem et révélation finale."),
   }), [mode, input]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function syncRemotePlan() {
-      if (publicPreview && !input.trim()) {
-        setRemotePlan(null);
-        return;
-      }
-
-      setLoadingPlan(true);
-      try {
-        const res = await fetch("/api/producer/plan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            mode,
-            input: input.trim() || JSON.stringify({
-              scenes: [
-                {
-                  numero: 1,
-                  lieu: "Plage Solarys",
-                  personnages: ["Sarah", "Hassan"],
-                  action: "Sarah confronte Hassan devant le totem après une trahison.",
-                  dialogue: "Sarah: Tu m'as menti.\nHassan: J'ai protégé l'équipe.",
-                  narration: "Le camp explose juste avant l'épreuve.",
-                  camera: "medium close-up on active speaker, reaction cutaways",
-                  emotion: "tension, humiliation, rage contenue",
-                },
-              ],
-            }),
-          }),
-        });
-        const data = await res.json();
-        if (!cancelled) {
-          setRemotePlan(res.ok ? data.plan : null);
-        }
-      } catch {
-        if (!cancelled) setRemotePlan(null);
-      } finally {
-        if (!cancelled) setLoadingPlan(false);
-      }
-    }
-
-    void syncRemotePlan();
-    return () => { cancelled = true; };
-  }, [mode, input, publicPreview]);
-
   const effectivePlan = remotePlan || plan;
+
+  const fallbackInput = mode === "scenario-json"
+    ? JSON.stringify({
+        scenes: [
+          {
+            numero: 1,
+            lieu: "Plage Solarys",
+            personnages: ["Sarah", "Hassan"],
+            action: "Sarah confronte Hassan devant le totem après une trahison.",
+            dialogue: "Sarah: Tu m'as menti.\nHassan: J'ai protégé l'équipe.",
+            narration: "Le camp explose juste avant l'épreuve.",
+            camera: "medium close-up on active speaker, reaction cutaways",
+            emotion: "tension, humiliation, rage contenue",
+          },
+        ],
+      })
+    : mode === "audio"
+      ? "Narrateur: La tempête se lève.\nSarah: On doit courir maintenant."
+      : "Créer un épisode dramatique sur la plage avec confrontation, totem et révélation finale.";
+
+  async function sendToProducer() {
+    const submittedInput = input.trim() || fallbackInput;
+    setLoadingPlan(true);
+    try {
+      const res = await fetch("/api/producer/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, input: submittedInput }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Analyse impossible");
+      setRemotePlan(data.plan);
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", text: submittedInput.slice(0, 240) },
+        { role: "producer", text: data.plan.summary },
+      ]);
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "user", text: submittedInput.slice(0, 240) },
+        { role: "producer", text: error instanceof Error ? error.message : "Analyse impossible" },
+      ]);
+    } finally {
+      setLoadingPlan(false);
+    }
+  }
 
   async function loadDemoScenario() {
     setLoadingDemoScenario(true);
@@ -94,6 +96,7 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
       if (!res.ok) throw new Error(data.error || "Impossible de charger le scénario");
       setMode("scenario-json");
       setInput(JSON.stringify(data, null, 2));
+      setMessages((prev) => [...prev, { role: "producer", text: "Scénario de test chargé. Cliquez sur Envoyer au Producteur IA pour lancer l'analyse." }]);
     } finally {
       setLoadingDemoScenario(false);
     }
@@ -180,10 +183,48 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
                     : mode === "scenario-json"
                       ? "Collez ici un synopsis libre ou un scénario JSON pour lancer un storyboard détaillé."
                       : "Décrivez simplement l'épisode voulu et le producteur prépare le plan multiagents."}
+                  onKeyDown={(e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                      e.preventDefault();
+                      void sendToProducer();
+                    }
+                  }}
                   className="w-full px-4 py-3 rounded-2xl bg-[#1e1e2e] border border-[#2a2a3e] text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 resize-none"
                 />
               </div>
             </div>
+
+            <button
+              onClick={sendToProducer}
+              disabled={loadingPlan}
+              className="w-full px-4 py-3 rounded-2xl border border-purple-500/30 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
+            >
+              {loadingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+              {loadingPlan ? "Analyse en cours..." : "Envoyer au Producteur IA"}
+            </button>
+
+            {messages.length > 0 && (
+              <div className="space-y-2">
+                <SectionTitle icon={<MessageSquareText className="w-4 h-4 text-cyan-400" />} title="Conversation" />
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {messages.map((message, index) => (
+                    <div
+                      key={`${message.role}-${index}`}
+                      className={`rounded-2xl p-3 text-sm ${
+                        message.role === "user"
+                          ? "bg-blue-600/15 border border-blue-600/25 text-blue-100"
+                          : "bg-[#1e1e2e] border border-[#2a2a3e] text-gray-200"
+                      }`}
+                    >
+                      <p className="text-[11px] uppercase tracking-wide opacity-70 mb-1">
+                        {message.role === "user" ? "Vous" : "Producteur IA"}
+                      </p>
+                      <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <MetricCard label="Agents actifs" value={String(AGENT_BLUEPRINT.length)} icon={<Users className="w-4 h-4 text-blue-400" />} />

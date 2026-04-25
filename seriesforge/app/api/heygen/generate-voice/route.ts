@@ -5,6 +5,7 @@ import OpenAI from "openai";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
+import { inferVoiceDirection } from "@/lib/audio/voiceDirection";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -16,7 +17,11 @@ async function saveAudioBuffer(buffer: Buffer, prefix = "voice"): Promise<string
   return `/uploads/voices/${fileName}`;
 }
 
-async function openAITTS(text: string, voiceName: string): Promise<string | null> {
+async function openAITTS(
+  text: string,
+  voiceName: string,
+  direction?: ReturnType<typeof inferVoiceDirection>
+): Promise<string | null> {
   try {
     const voiceMap: Record<string, string> = {
       "openai-onyx": "onyx", "openai-echo": "echo", "openai-fable": "fable",
@@ -29,7 +34,10 @@ async function openAITTS(text: string, voiceName: string): Promise<string | null
     )) as "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer";
 
     const resp = await openai.audio.speech.create({
-      model: "tts-1-hd", voice, input: text.slice(0, 4096), speed: 1.0,
+      model: "tts-1-hd",
+      voice,
+      input: text.slice(0, 4096),
+      speed: direction?.speed || 1.0,
     });
     const buf = Buffer.from(await resp.arrayBuffer());
     return await saveAudioBuffer(buf);
@@ -50,13 +58,19 @@ export async function POST(req: NextRequest) {
       where: { id: sceneId, episode: { series: { userId: user.id } } },
     });
     if (!scene) return NextResponse.json({ error: "Scène non trouvée" }, { status: 404 });
+    const direction = inferVoiceDirection({
+      text: text.trim(),
+      emotion: scene.emotion,
+      audioPrompt: scene.audioPrompt,
+      voiceProfile: characterName,
+    });
 
     // ─── OpenAI TTS voices (selected directly) ───────────────────────
     if (voiceId.startsWith("openai-")) {
-      const url = await openAITTS(text.trim(), voiceId);
+      const url = await openAITTS(text.trim(), voiceId, direction);
       if (!url) throw new Error("OpenAI TTS échoué — vérifiez OPENAI_API_KEY");
       await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
-      return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "openai-tts-hd" });
+      return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "openai-tts-hd", direction: direction.label });
     }
 
     // ─── ElevenLabs voices ────────────────────────────────────────────
@@ -70,24 +84,29 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           text: text.trim().slice(0, 5000),
           model_id: "eleven_multilingual_v2",
-          voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.2, use_speaker_boost: true },
+          voice_settings: {
+            stability: direction.stability,
+            similarity_boost: direction.similarityBoost,
+            style: direction.style,
+            use_speaker_boost: direction.useSpeakerBoost,
+          },
         }),
       });
       if (!res.ok) throw new Error(`ElevenLabs ${res.status}: ${await res.text().then(t => t.slice(0, 200))}`);
       const buf = Buffer.from(await res.arrayBuffer());
       const url = await saveAudioBuffer(buf);
       await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
-      return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "elevenlabs-v2" });
+      return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "elevenlabs-v2", direction: direction.label });
     }
 
     // ─── Mock voices ──────────────────────────────────────────────────
     if (voiceId.startsWith("mock-")) {
       // Use OpenAI TTS as demo
       if (process.env.OPENAI_API_KEY) {
-        const url = await openAITTS(text.trim(), characterName);
+        const url = await openAITTS(text.trim(), characterName, direction);
         if (url) {
           await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
-          return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "openai-tts-hd-demo" });
+          return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "openai-tts-hd-demo", direction: direction.label });
         }
       }
       return NextResponse.json({ success: true, mock: true, message: "Mode démo — ajoutez une clé API" });
@@ -100,7 +119,7 @@ export async function POST(req: NextRequest) {
     const ttsRes = await fetch("https://api.heygen.com/v1/audio/text_to_speech", {
       method: "POST",
       headers: { "X-Api-Key": apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ text: text.trim(), voice_id: voiceId, speed: 1.0 }),
+      body: JSON.stringify({ text: text.trim(), voice_id: voiceId, speed: direction.speed }),
     });
 
     if (ttsRes.ok) {
@@ -109,7 +128,7 @@ export async function POST(req: NextRequest) {
         const audioUrl = data.data?.audio_url;
         if (audioUrl) {
           await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: audioUrl } });
-          return NextResponse.json({ success: true, audioUrl, character: characterName, engine: "heygen-starfish" });
+          return NextResponse.json({ success: true, audioUrl, character: characterName, engine: "heygen-starfish", direction: direction.label });
         }
       }
       // HeyGen returned error
@@ -118,12 +137,13 @@ export async function POST(req: NextRequest) {
 
       if (errCode === "voice_unavailable" || errMsg.includes("not supported") || errMsg.includes("invalid_parameter")) {
         // Fallback to OpenAI TTS
-        const url = await openAITTS(text.trim(), characterName);
+        const url = await openAITTS(text.trim(), characterName, direction);
         if (url) {
           await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
           return NextResponse.json({
             success: true, audioUrl: url, character: characterName,
             engine: "openai-tts-fallback",
+            direction: direction.label,
             warning: `La voix HeyGen ne supporte pas Starfish TTS — audio généré avec OpenAI TTS HD`,
           });
         }
@@ -133,10 +153,10 @@ export async function POST(req: NextRequest) {
 
     const errText = await ttsRes.text();
     // Fallback
-    const url = await openAITTS(text.trim(), characterName);
+    const url = await openAITTS(text.trim(), characterName, direction);
     if (url) {
       await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
-      return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "openai-fallback" });
+      return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "openai-fallback", direction: direction.label });
     }
     throw new Error(`HeyGen ${ttsRes.status}: ${errText.slice(0, 200)}`);
 
