@@ -1,5 +1,3 @@
-"use client";
-
 import ProducerModePanel from "@/components/chatbot/ProducerModePanel";
 
 export default async function EpisodeWorkspaceLayout({
