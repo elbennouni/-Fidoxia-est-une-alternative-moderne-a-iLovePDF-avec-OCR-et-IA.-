@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import {
-  buildProducerChatTurn,
   type ProducerAttachment,
+  type ProducerMessage,
   type ProducerChatScope,
+  buildProducerChatReply,
 } from "@/lib/chatbot/producerChat";
 
 export async function POST(req: NextRequest) {
@@ -19,10 +20,11 @@ export async function POST(req: NextRequest) {
       episodeTitle?: string;
       seriesId?: string;
       episodeId?: string;
+      messages?: ProducerMessage[];
     };
 
     const scope = body.scope || "episode";
-    const turn = buildProducerChatTurn({
+    const reply = buildProducerChatReply({
       scope: body.scope || "episode",
       preferredMode: "brief",
       approvalMode: scope === "episode" ? "semi-auto" : "automatic",
@@ -31,13 +33,15 @@ export async function POST(req: NextRequest) {
       attachments: body.attachments || [],
       seriesName: body.seriesName || "Konanta",
       episodeTitle: body.episodeTitle,
+      messages: body.messages || [],
     });
 
     return NextResponse.json({
       success: true,
-      reply: turn.reply,
-      plan: turn.plan,
-      canvas: turn.canvas,
+      reply: reply.reply,
+      plan: reply.plan,
+      canvas: reply.canvas,
+      messages: reply.messages,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Producer chat failed";

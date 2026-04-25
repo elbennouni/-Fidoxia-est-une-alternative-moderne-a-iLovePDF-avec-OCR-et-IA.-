@@ -406,8 +406,7 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
         );
       })()}
 
-      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6 items-start">
-        <div>
+      <div>
           {/* Header */}
           <div className="mb-6">
             <Link href={`/series/${episode.series.id}/episodes`} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-4 transition-colors w-fit">
@@ -745,8 +744,6 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
           })}
         </div>
           )}
-        </div>
-
       </div>
     </div>
   );

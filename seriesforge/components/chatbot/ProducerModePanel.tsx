@@ -1,9 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Bot, ChevronDown, ChevronUp, Clapperboard, Loader2, MessageSquareText, Paperclip, Send, ShieldCheck, Sparkles, Users, Wand2, X } from "lucide-react";
 import { AGENT_BLUEPRINT, buildProducerPlan, type ProducerAgentStatus, type ProducerPlan } from "@/lib/chatbot/producerMode";
-import type { ProducerAttachment, ProducerChatResponse, ProducerMessage } from "@/lib/chatbot/producerChat";
+import type { ProducerAttachment, ProducerCanvas, ProducerChatResponse, ProducerMessage } from "@/lib/chatbot/producerChat";
 
 type ProducerVariant = "preview" | "series-compact" | "episode-full";
 
@@ -44,6 +44,7 @@ export default function ProducerModePanel({
   const [input, setInput] = useState("");
   const [seriesName, setSeriesName] = useState(initialSeriesName);
   const [remotePlan, setRemotePlan] = useState<ProducerPlan | null>(null);
+  const [remoteCanvas, setRemoteCanvas] = useState<ProducerCanvas | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [messages, setMessages] = useState<ProducerMessage[]>(initialMessages);
   const [attachments, setAttachments] = useState<ProducerAttachment[]>([]);
@@ -57,6 +58,31 @@ export default function ProducerModePanel({
       : "Préparer le prochain épisode de la série en partant d'un brief simple.",
   });
   const effectivePlan = remotePlan || fallbackPlan;
+  const effectiveCanvas = useMemo<ProducerCanvas>(() => (
+    remoteCanvas || {
+      scope: isEpisodeFull ? "episode" : isSeriesCompact ? "series" : "preview",
+      seriesName,
+      episodeTitle,
+      approvalMode: isEpisodeFull ? "semi-auto" : "automatic",
+      currentStep: isEpisodeFull ? "Prise en main de l'épisode" : "Préparation du prochain épisode",
+      summary: effectivePlan.summary,
+      scenesPlanned: effectivePlan.scenes.length,
+      lipsyncScenes: effectivePlan.scenes.filter((scene) => scene.lipsync).length,
+      knownCharacters: [],
+      knownEnvironments: [],
+      knownProps: [],
+      attachments,
+      nextActions: isEpisodeFull
+        ? [
+            "Je peux vous proposer la scene 1 et attendre votre validation.",
+            "Je peux aussi commencer par les decors, personnages et accessoires.",
+          ]
+        : [
+            "Donnez-moi l'idee de l'episode et je vous propose une structure.",
+            "Je garde le chat ouvert sur toute la serie pour continuer la production.",
+          ],
+    }
+  ), [attachments, effectivePlan, episodeTitle, isEpisodeFull, isSeriesCompact, remoteCanvas, seriesName]);
 
   async function sendToProducer() {
     const submittedInput = input.trim();
@@ -82,7 +108,16 @@ export default function ProducerModePanel({
       if (!res.ok) throw new Error(("error" in data && data.error) || "Analyse impossible");
       const successData = data as ProducerChatResponse;
       setRemotePlan(successData.plan);
-      setMessages(successData.messages);
+      setRemoteCanvas(successData.canvas);
+      setMessages((prev) => (
+        Array.isArray(successData.messages) && successData.messages.length > 0
+          ? successData.messages
+          : [
+              ...prev,
+              ...(submittedInput ? [{ role: "user" as const, text: submittedInput }] : []),
+              { role: "producer" as const, text: successData.reply || "Le Producteur IA a repondu sans detail." },
+            ]
+      ));
       setAttachments([]);
       setInput("");
       setValidationError(null);
@@ -177,17 +212,36 @@ export default function ProducerModePanel({
             <div className="space-y-2">
               <SectionTitle icon={<Clapperboard className="w-4 h-4 text-orange-400" />} title="Canvas de production" />
               <div className="rounded-2xl border border-[#2a2a3e] bg-[#1e1e2e] p-3 text-sm text-gray-300 max-h-44 overflow-y-auto">
-                <p className="font-medium text-white mb-2">{effectivePlan.summary}</p>
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-orange-300/80">Etape en cours</p>
+                    <p className="font-medium text-white">{effectiveCanvas.currentStep}</p>
+                  </div>
+                  <span className="text-[11px] px-2 py-1 rounded-full bg-purple-600/15 border border-purple-600/30 text-purple-200">
+                    {effectiveCanvas.approvalMode === "semi-auto" ? "validation a chaque etape" : "automatique"}
+                  </span>
+                </div>
+                <p className="text-gray-200 mb-3 whitespace-pre-wrap">{effectiveCanvas.summary}</p>
                 <ul className="space-y-2">
-                  {effectivePlan.scenes.slice(0, isSeriesCompact ? 3 : 5).map((step, index) => (
-                    <li key={`${step.title}-${index}`} className="flex items-start gap-2">
+                  {effectiveCanvas.nextActions.slice(0, 3).map((action, index) => (
+                    <li key={`${action}-${index}`} className="flex items-start gap-2">
                       <span className="mt-1 h-2 w-2 rounded-full bg-orange-400 flex-shrink-0" />
                       <span>
-                        <strong>{step.title}</strong> — {step.action}
+                        {action}
                       </span>
                     </li>
                   ))}
                 </ul>
+                <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded-xl bg-[#13131a] border border-[#2a2a3e] px-3 py-2">
+                    <span className="text-gray-500 block">Scenes</span>
+                    <span className="text-white font-semibold">{effectiveCanvas.scenesPlanned}</span>
+                  </div>
+                  <div className="rounded-xl bg-[#13131a] border border-[#2a2a3e] px-3 py-2">
+                    <span className="text-gray-500 block">Lipsync</span>
+                    <span className="text-white font-semibold">{effectiveCanvas.lipsyncScenes}</span>
+                  </div>
+                </div>
               </div>
 
               <SectionTitle icon={<MessageSquareText className="w-4 h-4 text-cyan-400" />} title="Dialogue" />
@@ -271,7 +325,7 @@ export default function ProducerModePanel({
                   ? "Ex: Crée le scénario, réutilise Sarah et Hassan, propose les décors et accessoires, puis demande-moi validation étape par étape."
                   : "Ex: Je veux créer l'épisode 5, ambiance sombre, style Pixar réaliste, et un grand conflit au camp."}
                 onKeyDown={(e) => {
-                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                  if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
                     void sendToProducer();
                   }
