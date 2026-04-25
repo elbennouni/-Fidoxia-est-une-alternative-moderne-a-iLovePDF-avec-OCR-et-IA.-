@@ -18,7 +18,7 @@ export default async function SeriesContextLayout({
         <ProducerModePanel
           variant="series-compact"
           seriesId={id}
-          integrated
+          embedded
         />
       </div>
     </div>
