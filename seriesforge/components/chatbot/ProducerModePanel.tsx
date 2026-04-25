@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Bot, ChevronDown, ChevronUp, Clapperboard, Loader2, MessageSquareText, Mic, Send, ShieldCheck, Sparkles, Users, Wand2 } from "lucide-react";
-import { buildProducerPlan, AGENT_BLUEPRINT, type ProducerAgentStatus, type ProducerPlan } from "@/lib/chatbot/producerMode";
+import { useEffect, useRef, useState } from "react";
+import { Bot, ChevronDown, ChevronUp, Clapperboard, Loader2, MessageSquareText, Paperclip, Send, ShieldCheck, Sparkles, Users, Wand2, X } from "lucide-react";
+import { AGENT_BLUEPRINT, buildProducerPlan, type ProducerAgentStatus, type ProducerPlan } from "@/lib/chatbot/producerMode";
+import type { ProducerAttachment, ProducerChatResponse, ProducerMessage } from "@/lib/chatbot/producerChat";
 
-type Mode = "audio" | "scenario-json" | "brief";
-type ChatMessage = { role: "user" | "producer"; text: string };
 type ProducerVariant = "preview" | "series-compact" | "episode-full";
 
 interface ProducerModePanelProps {
@@ -26,84 +25,74 @@ export default function ProducerModePanel({
   episodeTitle,
 }: ProducerModePanelProps) {
   const [open, setOpen] = useState(true);
-  const [mode, setMode] = useState<Mode>("scenario-json");
   const [input, setInput] = useState("");
   const [seriesName, setSeriesName] = useState(initialSeriesName);
   const [remotePlan, setRemotePlan] = useState<ProducerPlan | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
+  const [messages, setMessages] = useState<ProducerMessage[]>([]);
+  const [attachments, setAttachments] = useState<ProducerAttachment[]>([]);
+  const [chatReady, setChatReady] = useState(false);
   const [loadingDemoScenario, setLoadingDemoScenario] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const defaultScenarioInput = JSON.stringify({
-    scenes: [
-      {
-        numero: 1,
-        lieu: "Plage Solarys",
-        personnages: ["Sarah", "Hassan"],
-        action: "Sarah confronte Hassan devant le totem après une trahison.",
-        dialogue: "Sarah: Tu m'as menti.\nHassan: J'ai protégé l'équipe.",
-        narration: "Le camp explose juste avant l'épreuve.",
-        camera: "medium close-up on active speaker, reaction cutaways",
-        emotion: "tension, humiliation, rage contenue",
-      },
-    ],
-  }, null, 2);
-  const defaultAudioInput = "Narrateur: La tempête se lève.\nSarah: On doit courir maintenant.";
-  const defaultBriefInput = "Créer un épisode dramatique sur la plage avec confrontation, totem et révélation finale.";
-
-  const fallbackInput = mode === "scenario-json"
-    ? defaultScenarioInput
-    : mode === "audio"
-      ? defaultAudioInput
-      : defaultBriefInput;
-
-  const plan = useMemo(() => buildProducerPlan({
-    mode,
-    input: input || fallbackInput,
-  }), [mode, input, fallbackInput]);
-
-  const effectivePlan = remotePlan || plan;
   const isSeriesCompact = variant === "series-compact";
   const isEpisodeFull = variant === "episode-full";
+  const fallbackPlan = buildProducerPlan({
+    mode: "brief",
+    input: isEpisodeFull
+      ? "Préparer le pilotage complet de l'épisode courant avec validation étape par étape."
+      : "Préparer le prochain épisode de la série en partant d'un brief simple.",
+  });
+  const effectivePlan = remotePlan || fallbackPlan;
+
+  useEffect(() => {
+    if (chatReady) return;
+    const intro = isEpisodeFull
+      ? `Je pilote maintenant l'épisode${episodeTitle ? ` "${episodeTitle}"` : ""}. Je vais vous proposer les étapes : scénario, personnages à réutiliser, décors, accessoires, storyboard, prompts et voix.`
+      : `Je prépare la série${seriesName ? ` "${seriesName}"` : ""}. Je peux vous aider à créer le prochain épisode, clarifier le style et structurer la production avant d'entrer dans l'épisode.`;
+    const firstQuestion = isEpisodeFull
+      ? "Voulez-vous que je commence par écrire le scénario de l'épisode en cours, ou préférez-vous d'abord verrouiller le style et les personnages à réutiliser ?"
+      : "Quel épisode voulez-vous créer pour cette série ? Donnez-moi une idée simple et je vous proposerai le plan avant création.";
+
+    setMessages([
+      { role: "producer", text: intro },
+      { role: "producer", text: firstQuestion },
+    ]);
+    setChatReady(true);
+  }, [chatReady, episodeTitle, isEpisodeFull, seriesName]);
 
   async function sendToProducer() {
-    const submittedInput = input.trim() || fallbackInput;
-    if (mode === "scenario-json") {
-      try {
-        JSON.parse(submittedInput);
-        setValidationError(null);
-      } catch (error) {
-        setValidationError(error instanceof Error ? error.message : "JSON invalide");
-        setMessages((prev) => [
-          ...prev,
-          { role: "user", text: submittedInput.slice(0, 240) },
-          { role: "producer", text: "Le scénario JSON est invalide. Corrigez la syntaxe avant d'envoyer." },
-        ]);
-        return;
-      }
-    } else {
-      setValidationError(null);
-    }
+    const submittedInput = input.trim();
+    if (!submittedInput && attachments.length === 0) return;
     setLoadingPlan(true);
     try {
-      const res = await fetch("/api/producer/plan", {
+      const res = await fetch("/api/producer/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, input: submittedInput, seriesId, episodeId }),
+        body: JSON.stringify({
+          variant,
+          seriesId,
+          episodeId,
+          seriesName,
+          episodeTitle,
+          message: submittedInput,
+          messages,
+          attachments,
+        }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Analyse impossible");
-      setRemotePlan(data.plan);
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", text: submittedInput.slice(0, 240) },
-        { role: "producer", text: data.plan.summary },
-      ]);
+      const data = await res.json() as ProducerChatResponse | { error?: string };
+      if (!res.ok) throw new Error(("error" in data && data.error) || "Analyse impossible");
+      const successData = data as ProducerChatResponse;
+      setRemotePlan(successData.plan);
+      setMessages(successData.messages);
+      setAttachments([]);
+      setInput("");
+      setValidationError(null);
     } catch (error) {
       setMessages((prev) => [
         ...prev,
-        { role: "user", text: submittedInput.slice(0, 240) },
+        { role: "user", text: submittedInput.slice(0, 240) || "Pièce jointe envoyée" },
         { role: "producer", text: error instanceof Error ? error.message : "Analyse impossible" },
       ]);
     } finally {
@@ -117,13 +106,46 @@ export default function ProducerModePanel({
       const res = await fetch("/api/producer/demo-scenario");
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Impossible de charger le scénario");
-      setMode("scenario-json");
-      setInput(JSON.stringify(data, null, 2));
-      setValidationError(null);
-      setMessages((prev) => [...prev, { role: "producer", text: "Scénario de test chargé. Cliquez sur Envoyer au Producteur IA pour lancer l'analyse." }]);
+      const scenarioText = JSON.stringify(data, null, 2);
+      setAttachments((prev) => [
+        ...prev.filter((item) => item.type !== "scenario-json"),
+        {
+          id: `scenario-${Date.now()}`,
+          type: "scenario-json",
+          name: "scenario-test.json",
+          content: scenarioText,
+        },
+      ]);
+      setMessages((prev) => [
+        ...prev,
+        { role: "producer", text: "J'ai préparé un scénario JSON de test. Cliquez sur Envoyer pour que je l'analyse et vous propose le déroulé." },
+      ]);
     } finally {
       setLoadingDemoScenario(false);
     }
+  }
+
+  async function handleAttachmentChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const content = await file.text().catch(() => "");
+    const lowerName = file.name.toLowerCase();
+    const type =
+      lowerName.endsWith(".json") ? "scenario-json"
+      : file.type.startsWith("audio/") ? "audio"
+      : lowerName.match(/\.(png|jpg|jpeg|webp|gif)$/) ? "image"
+      : "image";
+
+    setAttachments((prev) => [
+      ...prev,
+      {
+        id: `${file.name}-${Date.now()}`,
+        type,
+        name: file.name,
+        content,
+      },
+    ]);
+    e.target.value = "";
   }
 
   return (
@@ -155,88 +177,24 @@ export default function ProducerModePanel({
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setMode("scenario-json")}
-                className={`px-4 py-3 rounded-2xl border text-sm font-medium transition-all ${mode === "scenario-json" ? "border-purple-500 bg-purple-600/15 text-purple-200" : "border-[#2a2a3e] bg-[#1e1e2e] text-gray-400"}`}
-              >
-                <MessageSquareText className="w-4 h-4 mx-auto mb-1" />
-                Scénario JSON
-              </button>
-              <button
-                onClick={() => setMode("audio")}
-                className={`px-4 py-3 rounded-2xl border text-sm font-medium transition-all ${mode === "audio" ? "border-blue-500 bg-blue-600/15 text-blue-200" : "border-[#2a2a3e] bg-[#1e1e2e] text-gray-400"}`}
-              >
-                <Mic className="w-4 h-4 mx-auto mb-1" />
-                Analyse audio
-              </button>
-            </div>
-
-            <button
-              onClick={() => setMode("brief")}
-              className={`w-full px-4 py-3 rounded-2xl border text-sm font-medium transition-all ${mode === "brief" ? "border-emerald-500 bg-emerald-600/15 text-emerald-200" : "border-[#2a2a3e] bg-[#1e1e2e] text-gray-400"}`}
-            >
-              <Sparkles className="w-4 h-4 inline mr-2" />
-              Brief libre
-            </button>
-
-            <button
-              onClick={loadDemoScenario}
-              disabled={loadingDemoScenario}
-              className="w-full px-4 py-3 rounded-2xl border border-orange-600/30 bg-orange-600/10 hover:bg-orange-600/20 disabled:opacity-50 text-orange-200 text-sm font-medium transition-all"
-            >
-              {loadingDemoScenario ? "Chargement..." : "Charger un scénario de test"}
-            </button>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs uppercase tracking-wide text-gray-500 mb-2">Série</label>
-                <input
-                  value={seriesName}
-                  onChange={(e) => setSeriesName(e.target.value)}
-                  disabled={variant !== "preview"}
-                  className="w-full px-4 py-3 rounded-2xl bg-[#1e1e2e] border border-[#2a2a3e] text-white focus:outline-none focus:border-purple-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs uppercase tracking-wide text-gray-500 mb-2">
-                  {mode === "audio" ? "Résumé audio / transcript" : mode === "scenario-json" ? "Synopsis ou scénario JSON" : "Brief créatif"}
-                </label>
-                <textarea
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  rows={7}
-                  placeholder={mode === "audio"
-                    ? "Collez ici la transcription ou le résumé audio à analyser pour découper des clips."
-                    : mode === "scenario-json"
-                      ? "Collez ici un synopsis libre ou un scénario JSON pour lancer un storyboard détaillé."
-                      : "Décrivez simplement l'épisode voulu et le producteur prépare le plan multiagents."}
-                  onKeyDown={(e) => {
-                    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                      e.preventDefault();
-                      void sendToProducer();
-                    }
-                  }}
-                  className="w-full px-4 py-3 rounded-2xl bg-[#1e1e2e] border border-[#2a2a3e] text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 resize-none"
-                />
-                {validationError && (
-                  <p className="text-xs text-red-400 mt-2">JSON invalide : {validationError}</p>
-                )}
-              </div>
-            </div>
-
-            <button
-              onClick={sendToProducer}
-              disabled={loadingPlan}
-              className="w-full px-4 py-3 rounded-2xl border border-purple-500/30 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
-            >
-              {loadingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {loadingPlan ? "Analyse en cours..." : "Envoyer au Producteur IA"}
-            </button>
-
             {messages.length > 0 && (
               <div className="space-y-2">
-                <SectionTitle icon={<MessageSquareText className="w-4 h-4 text-cyan-400" />} title="Conversation" />
+                <SectionTitle icon={<Clapperboard className="w-4 h-4 text-orange-400" />} title="Canvas de production" />
+                <div className="rounded-2xl border border-[#2a2a3e] bg-[#1e1e2e] p-3 text-sm text-gray-300 max-h-44 overflow-y-auto">
+                  <p className="font-medium text-white mb-2">{effectivePlan.summary}</p>
+                  <ul className="space-y-2">
+                    {effectivePlan.scenes.slice(0, isSeriesCompact ? 3 : 5).map((step, index) => (
+                      <li key={`${step.title}-${index}`} className="flex items-start gap-2">
+                        <span className="mt-1 h-2 w-2 rounded-full bg-orange-400 flex-shrink-0" />
+                        <span>
+                          <strong>{step.title}</strong> — {step.action}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                <SectionTitle icon={<MessageSquareText className="w-4 h-4 text-cyan-400" />} title="Dialogue" />
                 <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                   {messages.map((message, index) => (
                     <div
@@ -256,6 +214,97 @@ export default function ProducerModePanel({
                 </div>
               </div>
             )}
+
+            <div className="rounded-2xl border border-[#2a2a3e] bg-[#1e1e2e] p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-gray-500">Boîte de dialogue</p>
+                  <p className="text-sm text-gray-300 mt-1">
+                    Parlez au Producteur IA, joignez un scénario JSON, un son, une image de décor ou un personnage.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-3 py-2 rounded-xl border border-[#2a2a3e] bg-[#13131a] hover:border-purple-500/40 text-gray-300 text-sm flex items-center gap-2"
+                >
+                  <Paperclip className="w-4 h-4" />
+                  Joindre
+                </button>
+              </div>
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json,audio/*,image/*,.txt"
+                className="hidden"
+                onChange={handleAttachmentChange}
+              />
+
+              <div>
+                <label className="block text-xs uppercase tracking-wide text-gray-500 mb-2">Série</label>
+                <input
+                  value={seriesName}
+                  onChange={(e) => setSeriesName(e.target.value)}
+                  disabled={variant !== "preview"}
+                  className="w-full px-4 py-3 rounded-2xl bg-[#13131a] border border-[#2a2a3e] text-white focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              {attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {attachments.map((attachment) => (
+                    <div key={attachment.id} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#13131a] border border-[#2a2a3e] text-sm text-gray-300">
+                      <span className="text-xs uppercase text-purple-300">{attachment.type}</span>
+                      <span className="truncate max-w-[180px]">{attachment.name}</span>
+                      <button
+                        onClick={() => setAttachments((prev) => prev.filter((item) => item.id !== attachment.id))}
+                        className="text-gray-500 hover:text-white"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                rows={isEpisodeFull ? 4 : 3}
+                placeholder={isEpisodeFull
+                  ? "Ex: Crée le scénario, réutilise Sarah et Hassan, propose les décors et accessoires, puis demande-moi validation étape par étape."
+                  : "Ex: Je veux créer l'épisode 5, ambiance sombre, style Pixar réaliste, et un grand conflit au camp."}
+                onKeyDown={(e) => {
+                  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                    e.preventDefault();
+                    void sendToProducer();
+                  }
+                }}
+                className="w-full px-4 py-3 rounded-2xl bg-[#13131a] border border-[#2a2a3e] text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 resize-none"
+              />
+              {validationError && (
+                <p className="text-xs text-red-400">JSON invalide : {validationError}</p>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  onClick={sendToProducer}
+                  disabled={loadingPlan}
+                  className="flex-1 px-4 py-3 rounded-2xl border border-purple-500/30 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white text-sm font-semibold transition-all flex items-center justify-center gap-2"
+                >
+                  {loadingPlan ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {loadingPlan ? "Le Producteur réfléchit..." : "Envoyer au Producteur IA"}
+                </button>
+                <button
+                  onClick={loadDemoScenario}
+                  disabled={loadingDemoScenario}
+                  className="px-4 py-3 rounded-2xl border border-orange-600/30 bg-orange-600/10 hover:bg-orange-600/20 disabled:opacity-50 text-orange-200 text-sm font-medium transition-all"
+                >
+                  {loadingDemoScenario ? "..." : "Démo"}
+                </button>
+              </div>
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <MetricCard label="Agents actifs" value={String(AGENT_BLUEPRINT.length)} icon={<Users className="w-4 h-4 text-blue-400" />} />
