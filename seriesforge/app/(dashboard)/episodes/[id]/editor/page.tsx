@@ -12,7 +12,6 @@ import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
 import { ImageGeneratorPicker, VideoGeneratorPicker } from "@/components/ui/GeneratorPicker";
 import { IMAGE_GENERATORS, VIDEO_GENERATORS, getDefaultImageGenerator, setDefaultImageGenerator, getDefaultVideoGenerator, setDefaultVideoGenerator } from "@/lib/generators";
-import ProducerModePanel from "@/components/chatbot/ProducerModePanel";
 
 interface ImageHistoryEntry {
   url: string;
