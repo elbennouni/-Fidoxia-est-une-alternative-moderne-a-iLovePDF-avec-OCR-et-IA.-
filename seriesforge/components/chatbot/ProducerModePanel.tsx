@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { Bot, ChevronDown, ChevronUp, Clapperboard, Loader2, MessageSquareText, Paperclip, Send, ShieldCheck, Sparkles, Users, Wand2, X } from "lucide-react";
 import { AGENT_BLUEPRINT, buildProducerPlan, type ProducerAgentStatus, type ProducerPlan } from "@/lib/chatbot/producerMode";
 import type { ProducerAttachment, ProducerChatResponse, ProducerMessage } from "@/lib/chatbot/producerChat";
@@ -24,20 +24,32 @@ export default function ProducerModePanel({
   episodeId,
   episodeTitle,
 }: ProducerModePanelProps) {
+  const isSeriesCompact = variant === "series-compact";
+  const isEpisodeFull = variant === "episode-full";
+  const initialMessages: ProducerMessage[] = [
+    {
+      role: "producer",
+      text: isEpisodeFull
+        ? `Je pilote maintenant l'épisode${episodeTitle ? ` "${episodeTitle}"` : ""}. Je vais vous proposer les étapes : scénario, personnages à réutiliser, décors, accessoires, storyboard, prompts et voix.`
+        : `Je prépare la série${initialSeriesName ? ` "${initialSeriesName}"` : ""}. Je peux vous aider à créer le prochain épisode, clarifier le style et structurer la production avant d'entrer dans l'épisode.`,
+    },
+    {
+      role: "producer",
+      text: isEpisodeFull
+        ? "Voulez-vous que je commence par écrire le scénario de l'épisode en cours, ou que je prépare d'abord les décors, accessoires et le style ?"
+        : "Quel épisode voulez-vous créer pour cette série ? Donnez-moi une idée simple et je vous proposerai un plan avant création.",
+    },
+  ];
   const [open, setOpen] = useState(true);
   const [input, setInput] = useState("");
   const [seriesName, setSeriesName] = useState(initialSeriesName);
   const [remotePlan, setRemotePlan] = useState<ProducerPlan | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
-  const [messages, setMessages] = useState<ProducerMessage[]>([]);
+  const [messages, setMessages] = useState<ProducerMessage[]>(initialMessages);
   const [attachments, setAttachments] = useState<ProducerAttachment[]>([]);
-  const [chatReady, setChatReady] = useState(false);
   const [loadingDemoScenario, setLoadingDemoScenario] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const isSeriesCompact = variant === "series-compact";
-  const isEpisodeFull = variant === "episode-full";
   const fallbackPlan = buildProducerPlan({
     mode: "brief",
     input: isEpisodeFull
@@ -46,32 +58,17 @@ export default function ProducerModePanel({
   });
   const effectivePlan = remotePlan || fallbackPlan;
 
-  useEffect(() => {
-    if (chatReady) return;
-    const intro = isEpisodeFull
-      ? `Je pilote maintenant l'épisode${episodeTitle ? ` "${episodeTitle}"` : ""}. Je vais vous proposer les étapes : scénario, personnages à réutiliser, décors, accessoires, storyboard, prompts et voix.`
-      : `Je prépare la série${seriesName ? ` "${seriesName}"` : ""}. Je peux vous aider à créer le prochain épisode, clarifier le style et structurer la production avant d'entrer dans l'épisode.`;
-    const firstQuestion = isEpisodeFull
-      ? "Voulez-vous que je commence par écrire le scénario de l'épisode en cours, ou préférez-vous d'abord verrouiller le style et les personnages à réutiliser ?"
-      : "Quel épisode voulez-vous créer pour cette série ? Donnez-moi une idée simple et je vous proposerai le plan avant création.";
-
-    setMessages([
-      { role: "producer", text: intro },
-      { role: "producer", text: firstQuestion },
-    ]);
-    setChatReady(true);
-  }, [chatReady, episodeTitle, isEpisodeFull, seriesName]);
-
   async function sendToProducer() {
     const submittedInput = input.trim();
     if (!submittedInput && attachments.length === 0) return;
     setLoadingPlan(true);
     try {
+      const scope = isEpisodeFull ? "episode" : isSeriesCompact ? "series" : "preview";
       const res = await fetch("/api/producer/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          variant,
+          scope,
           seriesId,
           episodeId,
           seriesName,
@@ -177,43 +174,41 @@ export default function ProducerModePanel({
               </p>
             </div>
 
-            {messages.length > 0 && (
-              <div className="space-y-2">
-                <SectionTitle icon={<Clapperboard className="w-4 h-4 text-orange-400" />} title="Canvas de production" />
-                <div className="rounded-2xl border border-[#2a2a3e] bg-[#1e1e2e] p-3 text-sm text-gray-300 max-h-44 overflow-y-auto">
-                  <p className="font-medium text-white mb-2">{effectivePlan.summary}</p>
-                  <ul className="space-y-2">
-                    {effectivePlan.scenes.slice(0, isSeriesCompact ? 3 : 5).map((step, index) => (
-                      <li key={`${step.title}-${index}`} className="flex items-start gap-2">
-                        <span className="mt-1 h-2 w-2 rounded-full bg-orange-400 flex-shrink-0" />
-                        <span>
-                          <strong>{step.title}</strong> — {step.action}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <SectionTitle icon={<MessageSquareText className="w-4 h-4 text-cyan-400" />} title="Dialogue" />
-                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                  {messages.map((message, index) => (
-                    <div
-                      key={`${message.role}-${index}`}
-                      className={`rounded-2xl p-3 text-sm ${
-                        message.role === "user"
-                          ? "bg-blue-600/15 border border-blue-600/25 text-blue-100"
-                          : "bg-[#1e1e2e] border border-[#2a2a3e] text-gray-200"
-                      }`}
-                    >
-                      <p className="text-[11px] uppercase tracking-wide opacity-70 mb-1">
-                        {message.role === "user" ? "Vous" : "Producteur IA"}
-                      </p>
-                      <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
-                    </div>
+            <div className="space-y-2">
+              <SectionTitle icon={<Clapperboard className="w-4 h-4 text-orange-400" />} title="Canvas de production" />
+              <div className="rounded-2xl border border-[#2a2a3e] bg-[#1e1e2e] p-3 text-sm text-gray-300 max-h-44 overflow-y-auto">
+                <p className="font-medium text-white mb-2">{effectivePlan.summary}</p>
+                <ul className="space-y-2">
+                  {effectivePlan.scenes.slice(0, isSeriesCompact ? 3 : 5).map((step, index) => (
+                    <li key={`${step.title}-${index}`} className="flex items-start gap-2">
+                      <span className="mt-1 h-2 w-2 rounded-full bg-orange-400 flex-shrink-0" />
+                      <span>
+                        <strong>{step.title}</strong> — {step.action}
+                      </span>
+                    </li>
                   ))}
-                </div>
+                </ul>
               </div>
-            )}
+
+              <SectionTitle icon={<MessageSquareText className="w-4 h-4 text-cyan-400" />} title="Dialogue" />
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                {messages.map((message, index) => (
+                  <div
+                    key={`${message.role}-${index}`}
+                    className={`rounded-2xl p-3 text-sm ${
+                      message.role === "user"
+                        ? "bg-blue-600/15 border border-blue-600/25 text-blue-100"
+                        : "bg-[#1e1e2e] border border-[#2a2a3e] text-gray-200"
+                    }`}
+                  >
+                    <p className="text-[11px] uppercase tracking-wide opacity-70 mb-1">
+                      {message.role === "user" ? "Vous" : "Producteur IA"}
+                    </p>
+                    <p className="whitespace-pre-wrap leading-relaxed">{message.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
 
             <div className="rounded-2xl border border-[#2a2a3e] bg-[#1e1e2e] p-4 space-y-3">
               <div className="flex items-center justify-between gap-2">
