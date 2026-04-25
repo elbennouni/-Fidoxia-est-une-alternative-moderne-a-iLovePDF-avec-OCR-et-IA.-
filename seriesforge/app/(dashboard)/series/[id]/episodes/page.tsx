@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { ArrowLeft, Plus, Film, X, Loader2, ChevronRight, Trash2, AlertTriangle, FileJson, Zap } from "lucide-react";
-import ProducerModePanel from "@/components/chatbot/ProducerModePanel";
 
 interface Episode {
   id: string;
@@ -84,8 +83,7 @@ export default function EpisodesPage({ params }: { params: Promise<{ id: string 
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_380px] gap-6 items-start">
-        <div>
+      <div>
       <div className="mb-6">
         <Link href={`/series/${seriesId}`} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-4 transition-colors w-fit">
           <ArrowLeft className="w-4 h-4" /> Back to Series
@@ -214,15 +212,6 @@ export default function EpisodesPage({ params }: { params: Promise<{ id: string 
           ))}
         </div>
       )}
-        </div>
-
-        <div className="xl:sticky xl:top-24">
-          <ProducerModePanel
-            variant="series-compact"
-            seriesName={series?.title || ""}
-            seriesId={seriesId}
-          />
-        </div>
       </div>
     </div>
   );

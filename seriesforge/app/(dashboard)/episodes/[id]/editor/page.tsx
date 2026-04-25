@@ -747,14 +747,6 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
           )}
         </div>
 
-        <div className="xl:sticky xl:top-24 self-start">
-          <ProducerModePanel
-            variant="episode-full"
-            seriesId={episode.series.id}
-            episodeId={episode.id}
-            seriesName={episode.series.title}
-          />
-        </div>
       </div>
     </div>
   );
