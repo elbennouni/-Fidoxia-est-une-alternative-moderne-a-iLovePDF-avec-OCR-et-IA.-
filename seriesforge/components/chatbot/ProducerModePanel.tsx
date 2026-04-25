@@ -6,68 +6,91 @@ import { buildProducerPlan, AGENT_BLUEPRINT, type ProducerAgentStatus, type Prod
 
 type Mode = "audio" | "scenario-json" | "brief";
 type ChatMessage = { role: "user" | "producer"; text: string };
+type ProducerVariant = "preview" | "series-compact" | "episode-full";
 
-export default function ProducerModePanel({ publicPreview = false }: { publicPreview?: boolean }) {
+interface ProducerModePanelProps {
+  publicPreview?: boolean;
+  variant?: ProducerVariant;
+  seriesName?: string;
+  seriesId?: string;
+  episodeId?: string;
+  episodeTitle?: string;
+}
+
+export default function ProducerModePanel({
+  publicPreview = false,
+  variant = "preview",
+  seriesName: initialSeriesName = "Konanta",
+  seriesId,
+  episodeId,
+  episodeTitle,
+}: ProducerModePanelProps) {
   const [open, setOpen] = useState(true);
   const [mode, setMode] = useState<Mode>("scenario-json");
   const [input, setInput] = useState("");
-  const [seriesName, setSeriesName] = useState("Konanta");
+  const [seriesName, setSeriesName] = useState(initialSeriesName);
   const [remotePlan, setRemotePlan] = useState<ProducerPlan | null>(null);
   const [loadingPlan, setLoadingPlan] = useState(false);
   const [loadingDemoScenario, setLoadingDemoScenario] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [validationError, setValidationError] = useState<string | null>(null);
 
-  const plan = useMemo<ProducerPlan>(() => buildProducerPlan({
-    mode,
-    input: input || (mode === "scenario-json"
-      ? JSON.stringify({
-          scenes: [
-            {
-              numero: 1,
-              lieu: "Plage Solarys",
-              personnages: ["Sarah", "Hassan"],
-              action: "Sarah confronte Hassan devant le totem après une trahison.",
-              dialogue: "Sarah: Tu m'as menti.\nHassan: J'ai protégé l'équipe.",
-              narration: "Le camp explose juste avant l'épreuve.",
-              camera: "medium close-up on active speaker, reaction cutaways",
-              emotion: "tension, humiliation, rage contenue",
-            },
-          ],
-        }, null, 2)
-      : mode === "audio"
-        ? "Narrateur: La tempête se lève.\nSarah: On doit courir maintenant."
-        : "Créer un épisode dramatique sur la plage avec confrontation, totem et révélation finale."),
-  }), [mode, input]);
-
-  const effectivePlan = remotePlan || plan;
+  const defaultScenarioInput = JSON.stringify({
+    scenes: [
+      {
+        numero: 1,
+        lieu: "Plage Solarys",
+        personnages: ["Sarah", "Hassan"],
+        action: "Sarah confronte Hassan devant le totem après une trahison.",
+        dialogue: "Sarah: Tu m'as menti.\nHassan: J'ai protégé l'équipe.",
+        narration: "Le camp explose juste avant l'épreuve.",
+        camera: "medium close-up on active speaker, reaction cutaways",
+        emotion: "tension, humiliation, rage contenue",
+      },
+    ],
+  }, null, 2);
+  const defaultAudioInput = "Narrateur: La tempête se lève.\nSarah: On doit courir maintenant.";
+  const defaultBriefInput = "Créer un épisode dramatique sur la plage avec confrontation, totem et révélation finale.";
 
   const fallbackInput = mode === "scenario-json"
-    ? JSON.stringify({
-        scenes: [
-          {
-            numero: 1,
-            lieu: "Plage Solarys",
-            personnages: ["Sarah", "Hassan"],
-            action: "Sarah confronte Hassan devant le totem après une trahison.",
-            dialogue: "Sarah: Tu m'as menti.\nHassan: J'ai protégé l'équipe.",
-            narration: "Le camp explose juste avant l'épreuve.",
-            camera: "medium close-up on active speaker, reaction cutaways",
-            emotion: "tension, humiliation, rage contenue",
-          },
-        ],
-      })
+    ? defaultScenarioInput
     : mode === "audio"
-      ? "Narrateur: La tempête se lève.\nSarah: On doit courir maintenant."
-      : "Créer un épisode dramatique sur la plage avec confrontation, totem et révélation finale.";
+      ? defaultAudioInput
+      : defaultBriefInput;
+
+  const plan = useMemo(() => buildProducerPlan({
+    mode,
+    input: input || fallbackInput,
+  }), [mode, input, fallbackInput]);
+
+  const effectivePlan = remotePlan || plan;
+  const isSeriesCompact = variant === "series-compact";
+  const isEpisodeFull = variant === "episode-full";
 
   async function sendToProducer() {
     const submittedInput = input.trim() || fallbackInput;
+    if (mode === "scenario-json") {
+      try {
+        JSON.parse(submittedInput);
+        setValidationError(null);
+      } catch (error) {
+        setValidationError(error instanceof Error ? error.message : "JSON invalide");
+        setMessages((prev) => [
+          ...prev,
+          { role: "user", text: submittedInput.slice(0, 240) },
+          { role: "producer", text: "Le scénario JSON est invalide. Corrigez la syntaxe avant d'envoyer." },
+        ]);
+        return;
+      }
+    } else {
+      setValidationError(null);
+    }
     setLoadingPlan(true);
     try {
       const res = await fetch("/api/producer/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, input: submittedInput }),
+        body: JSON.stringify({ mode, input: submittedInput, seriesId, episodeId }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Analyse impossible");
@@ -96,6 +119,7 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
       if (!res.ok) throw new Error(data.error || "Impossible de charger le scénario");
       setMode("scenario-json");
       setInput(JSON.stringify(data, null, 2));
+      setValidationError(null);
       setMessages((prev) => [...prev, { role: "producer", text: "Scénario de test chargé. Cliquez sur Envoyer au Producteur IA pour lancer l'analyse." }]);
     } finally {
       setLoadingDemoScenario(false);
@@ -123,8 +147,11 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
           <div className="p-5 space-y-5">
             <div className="rounded-2xl border border-[#2a2a3e] bg-[#1b1b24] p-4">
               <p className="text-sm text-gray-300 leading-relaxed">
-                Ce panneau prépare le futur chatbot producteur. Il analyse un audio ou un scénario JSON, puis déclenche le workflow complet
-                de création avec agents spécialisés, storyboard, prompts image/vidéo, voix et contrôle qualité.
+                {isSeriesCompact
+                  ? "Préparez un nouvel épisode depuis la série : angle, style, synopsis, structure et scénario de départ."
+                  : isEpisodeFull
+                    ? "Ce chat pilote l'épisode en cours : scénario, réutilisation personnages, décors, accessoires, storyboard, prompts, voix et validations."
+                    : "Ce panneau prépare le futur chatbot producteur. Il analyse un audio ou un scénario JSON, puis déclenche le workflow complet de création avec agents spécialisés, storyboard, prompts image/vidéo, voix et contrôle qualité."}
               </p>
             </div>
 
@@ -167,6 +194,7 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
                 <input
                   value={seriesName}
                   onChange={(e) => setSeriesName(e.target.value)}
+                  disabled={variant !== "preview"}
                   className="w-full px-4 py-3 rounded-2xl bg-[#1e1e2e] border border-[#2a2a3e] text-white focus:outline-none focus:border-purple-500"
                 />
               </div>
@@ -191,6 +219,9 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
                   }}
                   className="w-full px-4 py-3 rounded-2xl bg-[#1e1e2e] border border-[#2a2a3e] text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 resize-none"
                 />
+                {validationError && (
+                  <p className="text-xs text-red-400 mt-2">JSON invalide : {validationError}</p>
+                )}
               </div>
             </div>
 
@@ -257,7 +288,7 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
             <div className="space-y-2">
               <SectionTitle icon={<Sparkles className="w-4 h-4 text-orange-400" />} title="Plan d’exécution" />
               <div className="space-y-2">
-                {effectivePlan.scenes.map((step, index) => (
+                {effectivePlan.scenes.map((step: ProducerPlan["scenes"][number], index: number) => (
                   <div key={`${step.title}-${index}`} className="rounded-2xl border border-[#2a2a3e] bg-[#1e1e2e] p-3">
                     <div className="flex items-start gap-3">
                       <span className="w-6 h-6 rounded-full bg-orange-600/15 border border-orange-600/30 text-orange-300 text-xs font-bold flex items-center justify-center mt-0.5">
@@ -273,6 +304,18 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
                 ))}
               </div>
             </div>
+
+            {isEpisodeFull && (
+              <div className="rounded-2xl border border-purple-600/20 bg-purple-900/10 p-4 text-sm text-purple-100">
+                Épisode en cours : {episodeTitle || "épisode courant"}. Le Producteur IA doit vous proposer chaque étape, attendre votre accord, puis exécuter.
+              </div>
+            )}
+
+            {isSeriesCompact && (
+              <div className="rounded-2xl border border-blue-600/20 bg-blue-900/10 p-4 text-sm text-blue-100">
+                Une fois l&apos;épisode créé, ouvrez-le pour continuer avec le chat complet, étape par étape.
+              </div>
+            )}
 
             <div className="rounded-2xl border border-green-600/20 bg-green-900/10 p-4">
               <SectionTitle icon={<ShieldCheck className="w-4 h-4 text-green-400" />} title="Règles de qualité intégrées" />

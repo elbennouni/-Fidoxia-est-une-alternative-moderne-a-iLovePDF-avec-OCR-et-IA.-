@@ -12,6 +12,7 @@ import { CostBadge, CostSummary } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
 import { ImageGeneratorPicker, VideoGeneratorPicker } from "@/components/ui/GeneratorPicker";
 import { IMAGE_GENERATORS, VIDEO_GENERATORS, getDefaultImageGenerator, setDefaultImageGenerator, getDefaultVideoGenerator, setDefaultVideoGenerator } from "@/lib/generators";
+import ProducerModePanel from "@/components/chatbot/ProducerModePanel";
 
 interface ImageHistoryEntry {
   url: string;
@@ -287,7 +288,7 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
     : null;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8">
+    <div className="max-w-7xl mx-auto px-4 py-8">
 
       {/* Pipeline Confirmation Modal */}
       {showPipelineConfirm && (
@@ -397,12 +398,14 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
         );
       })()}
 
-      {/* Header */}
-      <div className="mb-6">
-        <Link href={`/series/${episode.series.id}/episodes`} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-4 transition-colors w-fit">
-          <ArrowLeft className="w-4 h-4" /> Retour aux épisodes
-        </Link>
-        <div className="bg-[#13131a] border border-[#2a2a3e] rounded-2xl p-6 mb-4">
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6 items-start">
+        <div>
+          {/* Header */}
+          <div className="mb-6">
+            <Link href={`/series/${episode.series.id}/episodes`} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-4 transition-colors w-fit">
+              <ArrowLeft className="w-4 h-4" /> Retour aux épisodes
+            </Link>
+            <div className="bg-[#13131a] border border-[#2a2a3e] rounded-2xl p-6 mb-4">
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-white mb-1">{episode.title}</h1>
@@ -484,11 +487,11 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
               <p className="text-gray-300 text-sm leading-relaxed">{episode.script}</p>
             </div>
           )}
-        </div>
-      </div>
+            </div>
+          </div>
 
-      {/* Generator Selector */}
-      <div className="mb-6 bg-[#13131a] border border-[#2a2a3e] rounded-xl overflow-hidden">
+          {/* Generator Selector */}
+          <div className="mb-6 bg-[#13131a] border border-[#2a2a3e] rounded-xl overflow-hidden">
         <button
           onClick={() => setShowGenPicker(!showGenPicker)}
           className="w-full flex items-center justify-between p-4 hover:bg-white/5 transition-all"
@@ -522,10 +525,10 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
             />
           </div>
         )}
-      </div>
+          </div>
 
-      {/* Scenes */}
-      {episode.scenes.length === 0 ? (
+          {/* Scenes */}
+          {episode.scenes.length === 0 ? (
         <div className="text-center py-16 bg-[#13131a] border border-dashed border-[#2a2a3e] rounded-2xl">
           <Sparkles className="w-12 h-12 text-gray-600 mx-auto mb-4" />
           <p className="text-xl font-bold text-white mb-2">Prêt à générer</p>
@@ -543,7 +546,7 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
             {running ? "Génération en cours..." : "Générer Pipeline Complet"}
           </button>
         </div>
-      ) : (
+          ) : (
         <div className="space-y-3">
           <h2 className="text-lg font-bold text-white mb-4">
             Scénario complet — {episode.scenes.length} scènes
@@ -733,7 +736,18 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
             );
           })}
         </div>
-      )}
+          )}
+        </div>
+
+        <div className="xl:sticky xl:top-24 self-start">
+          <ProducerModePanel
+            variant="episode-full"
+            seriesId={episode.series.id}
+            episodeId={episode.id}
+            seriesName={episode.series.title}
+          />
+        </div>
+      </div>
     </div>
   );
 }

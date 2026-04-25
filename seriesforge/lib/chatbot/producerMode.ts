@@ -252,9 +252,17 @@ function buildBriefScenes(input: string): ProducerScenePlan[] {
 }
 
 function parseScenarioJson(input: string): ProducerScenePlan[] {
-  const parsed = JSON.parse(input) as { scenes?: RawScenarioScene[]; episode?: string };
-  const scenes = parsed.scenes || [];
-  return scenes.slice(0, 12).map((scene, index) => normalizeScene(scene, index));
+  try {
+    const parsed = JSON.parse(input) as { scenes?: RawScenarioScene[]; episode?: string };
+    const scenes = parsed.scenes || [];
+    if (Array.isArray(scenes) && scenes.length > 0) {
+      return scenes.slice(0, 12).map((scene, index) => normalizeScene(scene, index));
+    }
+  } catch {
+    // Fall back to brief parsing when the user writes free text in JSON mode.
+  }
+
+  return buildBriefScenes(input);
 }
 
 function buildAgentStatuses(mode: ProducerPlan["mode"], scenes: ProducerScenePlan[]): ProducerAgentStatus[] {
@@ -321,6 +329,20 @@ export function buildProducerPlan(params: {
     scenes,
     recommendations,
   };
+}
+
+export function safeBuildProducerPlan(params: {
+  mode: ProducerPlan["mode"];
+  input: string;
+}): { ok: true; plan: ProducerPlan } | { ok: false; error: string } {
+  try {
+    return { ok: true, plan: buildProducerPlan(params) };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Plan de production invalide",
+    };
+  }
 }
 
 export const PRODUCER_AGENTS: ProducerAgentStatus[] = AGENT_BLUEPRINT.map((agent) => ({
