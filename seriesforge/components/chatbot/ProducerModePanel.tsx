@@ -14,6 +14,7 @@ interface ProducerModePanelProps {
   seriesId?: string;
   episodeId?: string;
   episodeTitle?: string;
+  embedded?: boolean;
 }
 
 export default function ProducerModePanel({
@@ -23,6 +24,7 @@ export default function ProducerModePanel({
   seriesId,
   episodeId,
   episodeTitle,
+  embedded = false,
 }: ProducerModePanelProps) {
   const isSeriesCompact = variant === "series-compact";
   const isEpisodeFull = variant === "episode-full";
@@ -181,8 +183,8 @@ export default function ProducerModePanel({
   }
 
   return (
-    <aside className="w-full xl:w-[420px] flex-shrink-0">
-      <div className="rounded-3xl border border-purple-500/20 bg-[#13131a] overflow-hidden shadow-2xl">
+    <aside className={`w-full flex-shrink-0 ${embedded ? "" : "xl:w-[420px]"}`}>
+      <div className={embedded ? "h-full overflow-hidden" : "rounded-3xl border border-purple-500/20 bg-[#13131a] overflow-hidden shadow-2xl"}>
         <button
           onClick={() => setOpen((v) => !v)}
           className="w-full px-5 py-4 flex items-center justify-between bg-gradient-to-r from-purple-900/40 via-blue-900/20 to-purple-900/30"

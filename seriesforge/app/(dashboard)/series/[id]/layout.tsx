@@ -10,12 +10,15 @@ export default async function SeriesContextLayout({
   const { id } = await params;
 
   return (
-    <div className="xl:pr-[444px]">
-      {children}
-      <div className="hidden xl:block fixed top-20 right-4 z-40 w-[420px] max-h-[calc(100vh-96px)] overflow-y-auto">
+    <div className="max-w-[1800px] mx-auto px-4 py-8 xl:grid xl:grid-cols-[minmax(0,1fr)_380px] xl:gap-6 xl:items-start">
+      <div className="min-w-0">
+        {children}
+      </div>
+      <div className="hidden xl:block xl:sticky xl:top-20 self-start">
         <ProducerModePanel
           variant="series-compact"
           seriesId={id}
+          integrated
         />
       </div>
     </div>
