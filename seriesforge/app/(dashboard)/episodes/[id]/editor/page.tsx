@@ -160,10 +160,16 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
     const sceneCharacters = JSON.parse(scene.charactersJson || "[]") as string[];
     const multiCharacterScene = sceneCharacters.length > 1;
     const selectedGenerator = IMAGE_GENERATORS.find(g => g.id === selectedImgGen);
+    let forceInconsistentGeneration = false;
 
     if (multiCharacterScene && selectedGenerator && !selectedGenerator.multiCharacterSafe) {
-      toast.error(`"${selectedGenerator.name}" ne peut pas garder plusieurs personnages cohérents dans la même scène. Utilisez Nano Banana.`);
-      return;
+      const confirmed = window.confirm(
+        `"${selectedGenerator.name}" risque de générer des visages incohérents sur une scène multi-personnages.\n\n` +
+        `OK = je force quand même cette génération.\n` +
+        `Annuler = je reviens choisir un moteur plus cohérent.`
+      );
+      if (!confirmed) return;
+      forceInconsistentGeneration = true;
     }
 
     setGeneratingSceneImage(scene.id);
@@ -181,6 +187,7 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
         endpoint = "/api/generate/scene-character-consistent";
         body = { sceneId: scene.id, model: selectedImgGen };
       }
+      if (forceInconsistentGeneration) body.forceInconsistentGeneration = true;
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -194,7 +201,8 @@ export default function EpisodeEditorPage({ params }: { params: Promise<{ id: st
       const withPhoto = data.charactersWithPhoto?.length > 0 ? ` · 📸 ${data.charactersWithPhoto.join(", ")}` : "";
       const withDNA = data.charactersWithDNA?.length > 0 ? ` · 🧬 ${data.charactersWithDNA.join(", ")}` : "";
       const noPhoto = data.charsWithoutPhoto?.length > 0 ? ` ⚠️ sans photo: ${data.charsWithoutPhoto.join(", ")}` : "";
-      toast.success(`Image scène ${scene.sceneNumber} ✅${withRef}${withDNA}${withPhoto}${noPhoto}`, { duration: 6000 });
+      const forcedWarning = data.warning ? ` ⚠️ ${data.warning}` : "";
+      toast.success(`Image scène ${scene.sceneNumber} ✅${withRef}${withDNA}${withPhoto}${noPhoto}${forcedWarning}`, { duration: 7000 });
       fetchEpisode();
     } catch (err) {
       toast.dismiss(t);

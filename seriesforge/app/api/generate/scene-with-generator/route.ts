@@ -75,7 +75,7 @@ export async function POST(req: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { sceneId, generatorId } = await req.json();
+    const { sceneId, generatorId, forceUnsafeGenerator = false } = await req.json();
 
     const scene = await prisma.scene.findFirst({
       where: { id: sceneId, episode: { series: { userId: user.id } } },
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
     );
     const multiCharacterScene = presentChars.length > 1;
 
-    if (multiCharacterScene) {
+    if (multiCharacterScene && !forceUnsafeGenerator) {
       const nanoPayload = await validateNanoBananaAutoRoute({
         scene: {
           action: scene.action,
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    if (multiCharacterScene && !generator.multiCharacterSafe) {
+    if (multiCharacterScene && !generator.multiCharacterSafe && !forceUnsafeGenerator) {
       return NextResponse.json({
         error: `Le générateur "${generator.name}" n'est pas fiable pour une scène avec plusieurs personnages. Utilisez Nano Banana pour éviter des images aléatoires et des coûts inutiles.`,
         recommendedGeneratorId: "nano-banana-pro",
