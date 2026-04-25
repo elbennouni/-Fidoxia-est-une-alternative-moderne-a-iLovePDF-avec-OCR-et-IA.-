@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bot, ChevronDown, ChevronUp, Clapperboard, MessageSquareText, Mic, ShieldCheck, Sparkles, Users, Wand2 } from "lucide-react";
 import { buildProducerPlan, AGENT_BLUEPRINT, type ProducerAgentStatus, type ProducerPlan } from "@/lib/chatbot/producerMode";
 
@@ -11,6 +11,9 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
   const [mode, setMode] = useState<Mode>("scenario-json");
   const [input, setInput] = useState("");
   const [seriesName, setSeriesName] = useState("Konanta");
+  const [remotePlan, setRemotePlan] = useState<ProducerPlan | null>(null);
+  const [loadingPlan, setLoadingPlan] = useState(false);
+  const [loadingDemoScenario, setLoadingDemoScenario] = useState(false);
 
   const plan = useMemo<ProducerPlan>(() => buildProducerPlan({
     mode,
@@ -32,7 +35,69 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
       : mode === "audio"
         ? "Narrateur: La tempête se lève.\nSarah: On doit courir maintenant."
         : "Créer un épisode dramatique sur la plage avec confrontation, totem et révélation finale."),
-  }), [mode, input, seriesName]);
+  }), [mode, input]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function syncRemotePlan() {
+      if (publicPreview && !input.trim()) {
+        setRemotePlan(null);
+        return;
+      }
+
+      setLoadingPlan(true);
+      try {
+        const res = await fetch("/api/producer/plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            mode,
+            input: input.trim() || JSON.stringify({
+              scenes: [
+                {
+                  numero: 1,
+                  lieu: "Plage Solarys",
+                  personnages: ["Sarah", "Hassan"],
+                  action: "Sarah confronte Hassan devant le totem après une trahison.",
+                  dialogue: "Sarah: Tu m'as menti.\nHassan: J'ai protégé l'équipe.",
+                  narration: "Le camp explose juste avant l'épreuve.",
+                  camera: "medium close-up on active speaker, reaction cutaways",
+                  emotion: "tension, humiliation, rage contenue",
+                },
+              ],
+            }),
+          }),
+        });
+        const data = await res.json();
+        if (!cancelled) {
+          setRemotePlan(res.ok ? data.plan : null);
+        }
+      } catch {
+        if (!cancelled) setRemotePlan(null);
+      } finally {
+        if (!cancelled) setLoadingPlan(false);
+      }
+    }
+
+    void syncRemotePlan();
+    return () => { cancelled = true; };
+  }, [mode, input, publicPreview]);
+
+  const effectivePlan = remotePlan || plan;
+
+  async function loadDemoScenario() {
+    setLoadingDemoScenario(true);
+    try {
+      const res = await fetch("/api/producer/demo-scenario");
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Impossible de charger le scénario");
+      setMode("scenario-json");
+      setInput(JSON.stringify(data, null, 2));
+    } finally {
+      setLoadingDemoScenario(false);
+    }
+  }
 
   return (
     <aside className="w-full xl:w-[420px] flex-shrink-0">
@@ -85,6 +150,14 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
               Brief libre
             </button>
 
+            <button
+              onClick={loadDemoScenario}
+              disabled={loadingDemoScenario}
+              className="w-full px-4 py-3 rounded-2xl border border-orange-600/30 bg-orange-600/10 hover:bg-orange-600/20 disabled:opacity-50 text-orange-200 text-sm font-medium transition-all"
+            >
+              {loadingDemoScenario ? "Chargement..." : "Charger un scénario de test"}
+            </button>
+
             <div className="space-y-3">
               <div>
                 <label className="block text-xs uppercase tracking-wide text-gray-500 mb-2">Série</label>
@@ -114,13 +187,17 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
 
             <div className="grid grid-cols-2 gap-3">
               <MetricCard label="Agents actifs" value={String(AGENT_BLUEPRINT.length)} icon={<Users className="w-4 h-4 text-blue-400" />} />
-              <MetricCard label="Scènes prévues" value={String(plan.scenes.length)} icon={<Clapperboard className="w-4 h-4 text-purple-400" />} />
+              <MetricCard label="Scènes prévues" value={String(effectivePlan.scenes.length)} icon={<Clapperboard className="w-4 h-4 text-purple-400" />} />
+            </div>
+
+            <div className="rounded-2xl border border-[#2a2a3e] bg-[#1e1e2e] p-3 text-sm text-gray-400">
+              {loadingPlan ? "Analyse multiagents en cours..." : effectivePlan.summary}
             </div>
 
             <div className="space-y-2">
               <SectionTitle icon={<Wand2 className="w-4 h-4 text-purple-400" />} title="Agents branchés" />
               <div className="grid grid-cols-1 gap-2 max-h-64 overflow-y-auto pr-1">
-                {plan.agents.map((agent: ProducerAgentStatus) => (
+                {effectivePlan.agents.map((agent: ProducerAgentStatus) => (
                   <div key={agent.id} className="rounded-2xl border border-[#2a2a3e] bg-[#1e1e2e] p-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
@@ -139,7 +216,7 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
             <div className="space-y-2">
               <SectionTitle icon={<Sparkles className="w-4 h-4 text-orange-400" />} title="Plan d’exécution" />
               <div className="space-y-2">
-                {plan.scenes.map((step, index) => (
+                {effectivePlan.scenes.map((step, index) => (
                   <div key={`${step.title}-${index}`} className="rounded-2xl border border-[#2a2a3e] bg-[#1e1e2e] p-3">
                     <div className="flex items-start gap-3">
                       <span className="w-6 h-6 rounded-full bg-orange-600/15 border border-orange-600/30 text-orange-300 text-xs font-bold flex items-center justify-center mt-0.5">
@@ -159,7 +236,7 @@ export default function ProducerModePanel({ publicPreview = false }: { publicPre
             <div className="rounded-2xl border border-green-600/20 bg-green-900/10 p-4">
               <SectionTitle icon={<ShieldCheck className="w-4 h-4 text-green-400" />} title="Règles de qualité intégrées" />
               <ul className="mt-3 space-y-2 text-sm text-green-100/90">
-                {plan.recommendations.map((guard: string, index: number) => (
+                {effectivePlan.recommendations.map((guard: string, index: number) => (
                   <li key={index} className="flex items-start gap-2">
                     <span className="mt-1 h-1.5 w-1.5 rounded-full bg-green-400" />
                     <span>{guard}</span>

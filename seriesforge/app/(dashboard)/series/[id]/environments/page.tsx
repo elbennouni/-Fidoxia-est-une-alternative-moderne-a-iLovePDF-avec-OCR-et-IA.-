@@ -103,11 +103,13 @@ export default function EnvironmentsPage({ params }: { params: Promise<{ id: str
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
-      await fetch(`/api/environments/${envId}`, {
+      const patchRes = await fetch(`/api/environments/${envId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ previewImageUrl: data.url }),
       });
+      const patchData = await patchRes.json();
+      if (!patchRes.ok) throw new Error(patchData.error || "Échec enregistrement décor");
 
       toast.dismiss(t);
       toast.success("Image uploadée !");

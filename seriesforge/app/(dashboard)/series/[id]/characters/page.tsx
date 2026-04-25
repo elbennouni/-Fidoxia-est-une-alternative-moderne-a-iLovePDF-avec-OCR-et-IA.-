@@ -247,7 +247,13 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      await fetch(`/api/characters/${charId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ referenceImageUrl: data.url }) });
+      const saveRes = await fetch(`/api/characters/${charId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ referenceImageUrl: data.url }),
+      });
+      const saveData = await saveRes.json();
+      if (!saveRes.ok) throw new Error(saveData.error || "Enregistrement personnage échoué");
       toast.dismiss(t); toast.success("Photo uploadée !"); fetchData();
     } catch (err) { toast.dismiss(t); toast.error(err instanceof Error ? err.message : "Erreur"); }
     finally { setUploadingImage(null); }
