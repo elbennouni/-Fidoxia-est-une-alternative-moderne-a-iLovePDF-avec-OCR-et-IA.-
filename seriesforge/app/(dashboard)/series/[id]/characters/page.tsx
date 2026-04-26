@@ -40,7 +40,35 @@ interface Character {
   visualDNA?: string | null;
 }
 
-interface HeyGenVoice { voice_id: string; name: string; language: string; gender: string; }
+interface HeyGenVoice {
+  voice_id: string;
+  name: string;
+  language: string;
+  gender: string;
+  preview_audio?: string;
+  provider?: "elevenlabs" | "heygen" | "openai";
+}
+
+function normalizeVoiceProvider(voice: HeyGenVoice): "elevenlabs" | "heygen" | "openai" {
+  if (voice.provider === "elevenlabs") return "elevenlabs";
+  if (voice.provider === "openai") return "openai";
+  return "heygen";
+}
+
+function sortVoicesByPriority(voices: HeyGenVoice[]): HeyGenVoice[] {
+  const providerPriority = { elevenlabs: 0, heygen: 1, openai: 2 } as const;
+  const deduped = new Map<string, HeyGenVoice>();
+  for (const voice of voices) {
+    if (!deduped.has(voice.voice_id)) deduped.set(voice.voice_id, voice);
+  }
+
+  return [...deduped.values()].sort((left, right) => {
+    const providerDiff =
+      providerPriority[normalizeVoiceProvider(left)] - providerPriority[normalizeVoiceProvider(right)];
+    if (providerDiff !== 0) return providerDiff;
+    return left.name.localeCompare(right.name, "fr");
+  });
+}
 
 const GROUP_CATEGORIES = [
   "Rouges",
@@ -93,7 +121,7 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
   const [deleting, setDeleting] = useState(false);
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
-  const [heygenVoices, setHeygenVoices] = useState<HeyGenVoice[]>([]);
+  const [voices, setVoices] = useState<HeyGenVoice[]>([]);
   const [showVoicePanel, setShowVoicePanel] = useState<string | null>(null);
   const [pendingUploadCharId, setPendingUploadCharId] = useState<string | null>(null);
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
@@ -187,9 +215,22 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
       setVisualStyle(data.visualStyle || "");
     } finally { setLoading(false); }
     try {
-      const vRes = await fetch("/api/heygen/voices");
-      const vData = await vRes.json();
-      setHeygenVoices(vData.voices || []);
+      const [heygenRes, elevenRes] = await Promise.all([
+        fetch("/api/heygen/voices"),
+        fetch("/api/elevenlabs/voices"),
+      ]);
+      const [heygenData, elevenData] = await Promise.all([
+        heygenRes.json(),
+        elevenRes.json(),
+      ]);
+      const mergedVoices = sortVoicesByPriority([
+        ...((elevenData.voices || []).map((voice: HeyGenVoice) => ({ ...voice, provider: "elevenlabs" as const }))),
+        ...((heygenData.voices || []).map((voice: HeyGenVoice) => ({
+          ...voice,
+          provider: voice.provider || "heygen",
+        }))),
+      ]);
+      setVoices(mergedVoices);
     } catch {}
   }
 
@@ -276,7 +317,6 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           referenceImageUrl: data.url,
-          faceReferenceImages: [data.url],
         }),
       });
       const saveData = await saveRes.json();
@@ -527,17 +567,30 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
       {showVoicePanel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
           <div className="bg-[#13131a] border border-[#2a2a3e] rounded-2xl w-full max-w-lg p-6 max-h-[80vh] overflow-y-auto scrollbar-thin">
-            <div className="flex items-center justify-between mb-4"><h2 className="text-xl font-bold text-white flex items-center gap-2"><Mic className="w-5 h-5 text-orange-400" /> Voix HeyGen</h2><button onClick={() => setShowVoicePanel(null)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button></div>
+            <div className="flex items-center justify-between mb-4"><h2 className="text-xl font-bold text-white flex items-center gap-2"><Mic className="w-5 h-5 text-orange-400" /> Voix IA personnages</h2><button onClick={() => setShowVoicePanel(null)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button></div>
+            <div className="mb-4 rounded-xl border border-blue-600/20 bg-blue-900/10 px-3 py-2 text-xs text-blue-200">
+              Ordre conseillé: <span className="font-semibold text-white">ElevenLabs d'abord</span>, puis <span className="font-semibold text-white">HeyGen</span> en second.
+            </div>
             <div className="space-y-2">
-              {heygenVoices.map(voice => (
+              {voices.map(voice => (
                 <div key={voice.voice_id} className={`flex items-center gap-3 p-3 border rounded-xl transition-all ${playingVoice === voice.voice_id ? "border-green-500/50 bg-green-900/10" : "bg-[#1e1e2e] border-[#2a2a3e] hover:border-orange-500/50"}`}>
                   <div className="flex-1">
                     <p className="font-medium text-white text-sm">{voice.name}</p>
-                    <p className="text-xs text-gray-400">{voice.language === "fr" ? "🇫🇷" : "🇬🇧"} {voice.language} · {voice.gender === "male" ? "♂" : "♀"} {voice.gender}</p>
+                    <div className="flex flex-wrap gap-2 mt-0.5">
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                        normalizeVoiceProvider(voice) === "elevenlabs"
+                          ? "bg-violet-600/15 border-violet-600/30 text-violet-200"
+                          : "bg-orange-600/15 border-orange-600/30 text-orange-200"
+                      }`}>
+                        {normalizeVoiceProvider(voice) === "elevenlabs" ? "ElevenLabs" : "HeyGen"}
+                      </span>
+                      <span className="text-xs text-gray-400">{voice.language === "fr" || String(voice.language).toLowerCase().includes("french") ? "🇫🇷" : "🌐"} {voice.language}</span>
+                      <span className="text-xs text-gray-400">{voice.gender === "male" ? "♂" : "♀"} {voice.gender}</span>
+                    </div>
                   </div>
-                  {(voice as unknown as { preview_audio?: string }).preview_audio && (
+                  {voice.preview_audio && (
                     <button
-                      onClick={() => playVoicePreview((voice as unknown as { preview_audio: string }).preview_audio, voice.voice_id)}
+                      onClick={() => playVoicePreview(voice.preview_audio!, voice.voice_id)}
                       className={`flex items-center gap-1 px-2 py-1.5 border rounded-lg text-xs transition-all flex-shrink-0 ${playingVoice === voice.voice_id ? "bg-green-600/20 border-green-600/30 text-green-300" : "bg-[#2a2a3e] border-[#3a3a4e] text-gray-300 hover:text-green-300 hover:border-green-500/50"}`}
                     >
                       {playingVoice === voice.voice_id ? <Square className="w-3 h-3 fill-current" /> : <Play className="w-3 h-3 fill-current" />}

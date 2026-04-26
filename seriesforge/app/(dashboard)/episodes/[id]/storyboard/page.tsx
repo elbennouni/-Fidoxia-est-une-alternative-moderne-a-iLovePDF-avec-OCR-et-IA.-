@@ -368,19 +368,10 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
 
       if (uploadTarget.type === "character") {
         const character = characters.find((item) => item.id === uploadTarget.id);
-        const faceRefs = [...(character?.faceReferenceImages || [])];
-        const bodyRefs = [...(character?.fullBodyReferenceImages || [])];
-        const outfitRefs = [...(character?.outfitReferenceImages || [])];
-
-        if (uploadTarget.referenceKind === "face") faceRefs.push(uploadData.url);
-        if (uploadTarget.referenceKind === "fullBody") bodyRefs.push(uploadData.url);
-        if (uploadTarget.referenceKind === "outfit") outfitRefs.push(uploadData.url);
-
         const patchBody: Record<string, unknown> = {
-          referenceImageUrl: uploadTarget.referenceKind === "face" ? uploadData.url : character?.referenceImageUrl || uploadData.url,
-          faceReferenceImages: faceRefs,
-          fullBodyReferenceImages: bodyRefs,
-          outfitReferenceImages: outfitRefs,
+          // Current backend schema persists a single stable referenceImageUrl.
+          // Keep the newest uploaded image as the durable canonical reference.
+          referenceImageUrl: uploadData.url || character?.referenceImageUrl || null,
         };
         const saveRes = await fetch(`/api/characters/${uploadTarget.id}`, {
           method: "PATCH",
@@ -394,7 +385,11 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
         const saveRes = await fetch(`/api/environments/${uploadTarget.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ previewImageUrl: uploadData.url, name: env?.name, description: "" }),
+          body: JSON.stringify({
+            previewImageUrl: uploadData.url,
+            name: env?.name,
+            description: env ? (env as unknown as { description?: string }).description || undefined : undefined,
+          }),
         });
         const saveData = await saveRes.json();
         if (!saveRes.ok) throw new Error(saveData.error || "Sauvegarde décor impossible");
