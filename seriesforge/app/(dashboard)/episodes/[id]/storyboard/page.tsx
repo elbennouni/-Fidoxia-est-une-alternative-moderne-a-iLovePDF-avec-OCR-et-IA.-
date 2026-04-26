@@ -103,7 +103,7 @@ interface Scene {
     metadata: {
       sceneId: string;
       note?: string;
-      kind?: "manual" | "prop" | "moodboard";
+      kind?: "manual" | "prop" | "accessory" | "moodboard" | "team";
       promptAppliedAt?: string | null;
     };
   }>;
@@ -113,6 +113,7 @@ interface Scene {
 interface EpisodePayload {
   title: string;
   format: string;
+  seriesId?: string;
   series: {
     characters: CharacterRef[];
     environments: EnvironmentRef[];
@@ -150,6 +151,7 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
   const { id } = use(params);
   const router = useRouter();
   const [episodeTitle, setEpisodeTitle] = useState("");
+  const [seriesId, setSeriesId] = useState("");
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [characters, setCharacters] = useState<CharacterRef[]>([]);
   const [environments, setEnvironments] = useState<EnvironmentRef[]>([]);
@@ -174,6 +176,7 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
       if (res.status === 401) { router.push("/login"); return; }
       const data = await res.json() as EpisodePayload;
       setEpisodeTitle(data.title);
+      setSeriesId(data.seriesId || "");
       setScenes(data.scenes || []);
       setCharacters(data.series?.characters || []);
       setEnvironments(data.series?.environments || []);
@@ -283,9 +286,13 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
     }
   }
 
-  async function uploadSceneReferences(scene: Scene, files: FileList | null) {
+  async function uploadSceneReferences(scene: Scene, files: FileList | null, kind: "manual" | "accessory" | "team" = "manual") {
     const selectedFiles = Array.from(files || []).slice(0, 4);
     if (selectedFiles.length === 0) return;
+    if (!seriesId) {
+      toast.error("Serie introuvable pour sauvegarder ces references.");
+      return;
+    }
 
     setUploadingSceneReference(scene.id);
     const t = toast.loading(`Upload de ${selectedFiles.length} référence(s) de scène...`);
@@ -302,13 +309,13 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            seriesId: id,
+            seriesId,
             type: "scene_reference",
-            name: `Scene ${scene.sceneNumber} ref ${index + 1}`,
+            name: `${kind === "team" ? "Equipe" : kind === "accessory" ? "Accessoire" : "Scene"} ${scene.sceneNumber} ref ${index + 1}`,
             url: uploadData.url,
             prompt: JSON.stringify({
               sceneId: scene.id,
-              kind: "manual",
+              kind,
               note: "",
               promptAppliedAt: null,
             }),
@@ -320,7 +327,7 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
       }
 
       toast.dismiss(t);
-      toast.success("Nouvelles images ajoutées. Regénérez le prompt pour qu'elles soient prises en compte.");
+      toast.success("Nouvelles images ajoutées et sauvegardées. Regénérez le prompt pour qu'elles soient prises en compte.");
       await fetchData();
     } catch (err) {
       toast.dismiss(t);
@@ -456,7 +463,8 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
           if (!sceneReferenceUploadTarget) return;
           const scene = scenes.find((item) => item.id === sceneReferenceUploadTarget.sceneId);
           if (scene) {
-            void uploadSceneReferences(scene, e.target.files);
+            const kind = (sceneReferenceUploadTarget as { referenceKind?: "manual" | "accessory" | "team" } | null)?.referenceKind || "manual";
+            void uploadSceneReferences(scene, e.target.files, kind);
           }
           e.target.value = "";
         }}
@@ -475,8 +483,12 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
             fileInputRef.current?.click();
           }}
           onRemoveCharacterReference={removeCharacterReference}
-          onUploadSceneReferences={(scene) => {
-            setSceneReferenceUploadTarget({ sceneId: scene.id, sceneNumber: scene.sceneNumber });
+          onUploadSceneReferences={(scene, referenceKind = "manual") => {
+            setSceneReferenceUploadTarget({ sceneId: scene.id, sceneNumber: scene.sceneNumber, referenceKind } as {
+              sceneId: string;
+              sceneNumber: number;
+              referenceKind: "manual" | "accessory" | "team";
+            });
             sceneReferenceInputRef.current?.click();
           }}
           onRemoveSceneReference={removeSceneReference}
@@ -742,7 +754,7 @@ function PromptModal({
   optimizingPrompt: { sceneId: string; type: "image" | "video" } | null;
   onUploadReference: (type: "character" | "environment", id: string, referenceKind: "face" | "fullBody" | "outfit" | "environment") => void;
   onRemoveCharacterReference: (character: CharacterRef, referenceKind: "face" | "fullBody" | "outfit", url: string) => Promise<void>;
-  onUploadSceneReferences: (scene: Scene) => void;
+  onUploadSceneReferences: (scene: Scene, referenceKind?: "manual" | "accessory" | "team") => void;
   onRemoveSceneReference: (assetId: string) => Promise<void>;
   uploadingSceneReference: string | null;
 }) {
@@ -771,17 +783,35 @@ function PromptModal({
                   <div>
                     <p className="text-xs uppercase tracking-wide text-gray-500">Références manuelles de scène</p>
                     <p className="text-sm text-gray-300 mt-1">
-                      Ajoutez 3 à 4 images pour guider précisément la mise en scène, les props, le décor, la tenue ou la composition.
+                      Ajoutez ici des images de scene, d'accessoire ou d'equipe pour guider précisément la mise en scène.
                     </p>
                   </div>
-                  <button
-                    onClick={() => onUploadSceneReferences(scene)}
-                    disabled={uploadingSceneReference === scene.id}
-                    className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-cyan-600/20 border border-cyan-600/30 text-cyan-300 text-xs disabled:opacity-60"
-                  >
-                    {uploadingSceneReference === scene.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-                    ajouter 3-4 images
-                  </button>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button
+                      onClick={() => onUploadSceneReferences(scene, "manual")}
+                      disabled={uploadingSceneReference === scene.id}
+                      className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-cyan-600/20 border border-cyan-600/30 text-cyan-300 text-xs disabled:opacity-60"
+                    >
+                      {uploadingSceneReference === scene.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                      scene
+                    </button>
+                    <button
+                      onClick={() => onUploadSceneReferences(scene, "accessory")}
+                      disabled={uploadingSceneReference === scene.id}
+                      className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-orange-600/20 border border-orange-600/30 text-orange-300 text-xs disabled:opacity-60"
+                    >
+                      {uploadingSceneReference === scene.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                      accessoire
+                    </button>
+                    <button
+                      onClick={() => onUploadSceneReferences(scene, "team")}
+                      disabled={uploadingSceneReference === scene.id}
+                      className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-purple-600/20 border border-purple-600/30 text-purple-300 text-xs disabled:opacity-60"
+                    >
+                      {uploadingSceneReference === scene.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                      equipe
+                    </button>
+                  </div>
                 </div>
                 {scene.sceneReferencesNeedPromptRefresh ? (
                   <div className="rounded-lg border border-amber-600/30 bg-amber-900/10 px-3 py-2 text-xs text-amber-300">
@@ -802,6 +832,9 @@ function PromptModal({
                       )}
                       <div className="p-2">
                         <p className="text-[11px] text-white truncate">{reference.name}</p>
+                        <p className="text-[11px] text-cyan-300">
+                          {reference.metadata.kind === "team" ? "Equipe" : reference.metadata.kind === "accessory" || reference.metadata.kind === "prop" ? "Accessoire" : "Scene"}
+                        </p>
                         <p className="text-[11px] text-gray-500">
                           {new Date(reference.createdAt).toLocaleDateString("fr-FR")}
                         </p>

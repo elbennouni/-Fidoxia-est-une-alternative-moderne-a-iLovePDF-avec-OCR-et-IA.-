@@ -3,7 +3,7 @@ export const SCENE_REFERENCE_ASSET_TYPE = "scene_reference";
 export interface SceneReferenceAssetMetadata {
   sceneId: string;
   note?: string;
-  kind?: "manual" | "prop" | "moodboard";
+  kind?: "manual" | "prop" | "accessory" | "moodboard" | "team";
   promptAppliedAt?: string | null;
 }
 
@@ -56,6 +56,20 @@ export function serializeSceneReferenceMetadata(metadata: SceneReferenceAssetMet
   });
 }
 
+export function getSceneReferenceKindLabel(kind?: SceneReferenceAssetMetadata["kind"]): string {
+  switch (kind) {
+    case "prop":
+    case "accessory":
+      return "Accessoire";
+    case "team":
+      return "Equipe";
+    case "moodboard":
+      return "Moodboard";
+    default:
+      return "Scene";
+  }
+}
+
 export function getSceneReferenceAssets(assets: RawAsset[], sceneId?: string): SceneReferenceAsset[] {
   return assets
     .filter((asset) => asset.type === SCENE_REFERENCE_ASSET_TYPE)
@@ -90,7 +104,8 @@ export function buildSceneReferencePromptNotes(references: SceneReferenceAsset[]
     const suffix = reference.metadata.note?.trim()
       ? ` — note: ${reference.metadata.note.trim()}`
       : "";
-    return `Reference ${index + 1}: ${reference.name}${suffix}`;
+    const kindLabel = getSceneReferenceKindLabel(reference.metadata.kind);
+    return `${kindLabel} reference ${index + 1}: ${reference.name}${suffix}`;
   });
 }
 
@@ -100,6 +115,6 @@ export function buildSceneReferencePromptBlock(references: SceneReferenceAsset[]
   return [
     "MANUAL SCENE REFERENCES:",
     ...buildSceneReferencePromptNotes(references).map((line) => `- ${line}`),
-    "Treat these uploaded scene images as mandatory visual guidance for staging, props, framing, styling, outfit accuracy, and environment continuity.",
+    "Treat these uploaded scene images as mandatory visual guidance for staging, props/accessories, team composition, framing, styling, outfit accuracy, and environment continuity.",
   ].join("\n");
 }
