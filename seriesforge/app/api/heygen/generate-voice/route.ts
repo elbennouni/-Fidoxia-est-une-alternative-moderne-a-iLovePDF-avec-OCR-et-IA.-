@@ -144,7 +144,7 @@ export async function POST(req: NextRequest) {
             success: true, audioUrl: url, character: characterName,
             engine: "openai-tts-fallback",
             direction: direction.label,
-            warning: `La voix HeyGen ne supporte pas Starfish TTS — audio généré avec OpenAI TTS HD`,
+            warning: `La voix HeyGen sélectionnée n'est pas compatible avec le moteur Starfish TTS (${voiceId}) — audio généré avec OpenAI TTS HD à la place.`,
           });
         }
       }

@@ -18,6 +18,8 @@ interface HeyGenVoice {
   language: string;
   gender: string;
   preview_audio?: string;
+  starfish_compatible?: boolean;
+  provider?: string;
 }
 
 interface Character {

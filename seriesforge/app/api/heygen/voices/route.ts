@@ -52,30 +52,26 @@ export async function GET(req: NextRequest) {
     const data = await res.json();
     const allVoices = data.data?.voices || data.voices || [];
 
-    // Prefer voices that support Starfish TTS (emotion_support = true OR support_interactive_avatar = true)
-    // These are the multilingual voices that work with /v1/audio/text_to_speech
-    let voices = allVoices
-      .filter((v: Record<string, unknown>) => v.emotion_support === true || v.support_interactive_avatar === true || String(v.language).toLowerCase().includes("multilingual"))
-      .map((v: Record<string, unknown>) => ({
-        voice_id: v.voice_id,
-        name: v.name,
-        language: v.language,
-        gender: v.gender,
-        preview_audio: v.preview_audio || "",
-        starfish_compatible: true,
-      }));
+    // Show ALL voices, including custom/user-created voices.
+    // Compatibility with Starfish TTS is surfaced as metadata instead of silently hiding voices.
+    let voices = allVoices.map((v: Record<string, unknown>) => {
+      const language = String(v.language || "");
+      const starfishCompatible =
+        v.emotion_support === true ||
+        v.support_interactive_avatar === true ||
+        language.toLowerCase().includes("multilingual");
 
-    // If no multilingual voices, fall back to all voices with a warning
-    if (voices.length === 0) {
-      voices = allVoices.map((v: Record<string, unknown>) => ({
+      return {
         voice_id: v.voice_id,
         name: v.name,
         language: v.language,
         gender: v.gender,
         preview_audio: v.preview_audio || "",
-        starfish_compatible: false,
-      }));
-    }
+        starfish_compatible: starfishCompatible,
+        provider: "heygen",
+        visibility: v.is_public === false ? "custom" : "catalog",
+      };
+    });
 
     // Add OpenAI TTS voices as fallback option (always work)
     const openaiVoices = [
@@ -87,20 +83,33 @@ export async function GET(req: NextRequest) {
       { voice_id: "openai-alloy", name: "🤖 OpenAI — Alloy (Neutre FR)", language: "Multilingual", gender: "male", preview_audio: "", starfish_compatible: true, provider: "openai" },
     ];
 
-    // Sort: French first, then multilingual, then others
-    voices = [...openaiVoices, ...voices].sort((a: { language: string }, b: { language: string }) => {
+    // Sort: French first, then multilingual, then Starfish-compatible, then custom voices, then others
+    voices = [...openaiVoices, ...voices].sort((a: { language: string; starfish_compatible?: boolean; visibility?: string }, b: { language: string; starfish_compatible?: boolean; visibility?: string }) => {
       const aFr = String(a.language).toLowerCase().includes("french");
       const bFr = String(b.language).toLowerCase().includes("french");
       const aMulti = String(a.language).toLowerCase().includes("multilingual");
       const bMulti = String(b.language).toLowerCase().includes("multilingual");
+      const aStarfish = a.starfish_compatible === true;
+      const bStarfish = b.starfish_compatible === true;
+      const aCustom = a.visibility === "custom";
+      const bCustom = b.visibility === "custom";
       if (aFr && !bFr) return -1;
       if (!aFr && bFr) return 1;
       if (aMulti && !bMulti) return -1;
       if (!aMulti && bMulti) return 1;
+      if (aStarfish && !bStarfish) return -1;
+      if (!aStarfish && bStarfish) return 1;
+      if (aCustom && !bCustom) return -1;
+      if (!aCustom && bCustom) return 1;
       return 0;
     });
 
-    return NextResponse.json({ voices, source: "heygen", totalHeyGen: allVoices.length });
+    return NextResponse.json({
+      voices,
+      source: "heygen",
+      totalHeyGen: allVoices.length,
+      note: "Toutes les voix HeyGen sont affichées. Les voix marquées non compatibles Starfish peuvent nécessiter un fallback OpenAI pour la génération audio.",
+    });
   } catch (error) {
     console.error("HeyGen voices error:", error);
     return NextResponse.json({ voices: MOCK_VOICES, source: "mock" });
