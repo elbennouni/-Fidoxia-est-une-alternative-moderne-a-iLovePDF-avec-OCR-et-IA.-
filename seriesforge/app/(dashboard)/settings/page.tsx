@@ -80,16 +80,14 @@ const API_KEYS = [
   },
 ];
 
+const EMPTY_VALUES = Object.fromEntries(API_KEYS.map(({ key }) => [key, ""])) as Record<string, string>;
+
 export default function SettingsPage() {
   const router = useRouter();
-  const [values, setValues] = useState<Record<string, string>>({
-    OPENAI_API_KEY: "",
-    REPLICATE_API_TOKEN: "",
-    FAL_API_KEY: "",
-    HEYGEN_API_KEY: "",
-  });
+  const [values, setValues] = useState<Record<string, string>>(EMPTY_VALUES);
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<"idle" | "ok" | "error">("idle");
   const [currentKeys, setCurrentKeys] = useState<Record<string, string>>({});
@@ -121,12 +119,39 @@ export default function SettingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.success("✅ Clés API sauvegardées !");
-      setValues({ OPENAI_API_KEY: "", REPLICATE_API_TOKEN: "", FAL_API_KEY: "", HEYGEN_API_KEY: "" });
+      setValues(EMPTY_VALUES);
       fetchCurrentKeys();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erreur lors de la sauvegarde");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveOne(key: string) {
+    const value = values[key]?.trim();
+    if (!value) {
+      toast.error("Entrez une valeur avant de sauvegarder");
+      return;
+    }
+
+    setSavingKey(key);
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ [key]: value }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      toast.success(`✅ ${API_KEYS.find((item) => item.key === key)?.label || key} sauvegardée !`);
+      setValues((prev) => ({ ...prev, [key]: "" }));
+      fetchCurrentKeys();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur lors de la sauvegarde");
+    } finally {
+      setSavingKey(null);
     }
   }
 
@@ -197,10 +222,10 @@ export default function SettingsPage() {
               </div>
             )}
 
-            <div className="relative">
+            <div className="relative flex gap-2">
               <input
                 type={visible[key] ? "text" : "password"}
-                value={values[key]}
+                value={values[key] || ""}
                 onChange={e => setValues({ ...values, [key]: e.target.value })}
                 placeholder={currentKeys[key] ? "Laisser vide pour garder la clé actuelle" : placeholder}
                 className="w-full px-4 py-3 pr-12 bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl text-white placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono text-sm"
@@ -211,6 +236,15 @@ export default function SettingsPage() {
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300 transition-colors"
               >
                 {visible[key] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSaveOne(key)}
+                disabled={savingKey === key || !values[key]?.trim()}
+                className="flex items-center justify-center gap-1 px-3 py-3 bg-purple-600 hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold rounded-xl transition-all whitespace-nowrap"
+                title={`Sauvegarder ${label}`}
+              >
+                {savingKey === key ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               </button>
             </div>
           </div>

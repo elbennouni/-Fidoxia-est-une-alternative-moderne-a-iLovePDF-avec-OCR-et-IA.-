@@ -20,6 +20,7 @@ interface HeyGenVoice {
   preview_audio?: string;
   starfish_compatible?: boolean;
   provider?: string;
+  visibility?: string;
 }
 
 interface Character {
@@ -71,6 +72,7 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   const [generatingVoice, setGeneratingVoice] = useState<string | null>(null);
   const [showVoicePicker, setShowVoicePicker] = useState<{ charId: string; charName: string; isNarrator?: boolean } | null>(null);
   const [voiceFilter, setVoiceFilter] = useState("fr");
+  const [voiceProviderFilter, setVoiceProviderFilter] = useState<"all" | "heygen" | "elevenlabs">("all");
   const [characters, setCharacters] = useState<Character[]>([]);
   const [narratorVoiceId, setNarratorVoiceId] = useState<string>("");
   const [narratorVoiceName, setNarratorVoiceName] = useState<string>("");
@@ -410,7 +412,8 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   }
 
   const filteredVoices = voices.filter(v =>
-    voiceFilter === "all" || v.language === voiceFilter || v.gender === voiceFilter
+    (voiceFilter === "all" || v.language === voiceFilter || v.gender === voiceFilter) &&
+    (voiceProviderFilter === "all" || (v.provider || "heygen") === voiceProviderFilter)
   );
 
   // Inline editable text field component
