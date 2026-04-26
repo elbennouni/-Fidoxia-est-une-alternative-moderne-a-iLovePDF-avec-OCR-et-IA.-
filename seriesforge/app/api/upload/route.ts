@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { persistUserUpload } from "@/lib/storage/publicUploads";
+import { ensureDurableImageUrl } from "@/lib/storage/durableImages";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,8 +21,14 @@ export async function POST(req: NextRequest) {
       originalFileName: file.name,
     });
 
+    const durableUrl = await ensureDurableImageUrl(persisted.url, {
+      folder,
+      fileNamePrefix: persisted.fileName.replace(/\.[^.]+$/, ""),
+      forceRehostRemote: persisted.storage !== "fal",
+    });
+
     return NextResponse.json({
-      url: persisted.url,
+      url: durableUrl,
       fileName: persisted.fileName,
       storage: persisted.storage,
     });

@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
 
-const DURABLE_REMOTE_HOSTS = ["fal.run", "fal.media"];
+const DURABLE_REMOTE_HOSTS = ["fal.run", "fal.media", "catbox.moe"];
 
 function getExtensionFromMimeType(mimeType: string): string {
   if (mimeType.includes("png")) return "png";
@@ -45,7 +45,7 @@ function buildFileName(prefix: string, ext: string): string {
 
 export function isDurableImageUrl(imageUrl: string): boolean {
   if (!imageUrl) return false;
-  if (imageUrl.startsWith("/uploads/")) return true;
+  if (imageUrl.startsWith("/uploads/")) return false;
   if (!imageUrl.startsWith("http://") && !imageUrl.startsWith("https://")) return false;
 
   try {
@@ -65,6 +65,7 @@ function isLikelyTemporaryRemoteUrl(imageUrl: string): boolean {
     const host = parsed.host.toLowerCase();
     return (
       hasSignedQuery ||
+      host.includes("tmpfiles.org") ||
       host.includes("blob.core.windows.net") ||
       host.includes("oaiusercontent.com") ||
       host.includes("openai")
@@ -92,6 +93,26 @@ async function uploadBufferToFalStorage(buffer: Buffer, fileName: string, mimeTy
     if (!res.ok) return null;
     const data = await res.json();
     return data.url || null;
+  } catch {
+    return null;
+  }
+}
+
+async function uploadBufferToCatboxStorage(buffer: Buffer, fileName: string, mimeType: string): Promise<string | null> {
+  try {
+    const blob = new Blob([new Uint8Array(buffer)], { type: mimeType });
+    const formData = new FormData();
+    formData.append("reqtype", "fileupload");
+    formData.append("fileToUpload", blob, fileName);
+
+    const res = await fetch("https://catbox.moe/user/api.php", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!res.ok) return null;
+    const text = (await res.text()).trim();
+    return text.startsWith("http://") || text.startsWith("https://") ? text : null;
   } catch {
     return null;
   }
@@ -131,6 +152,8 @@ async function persistImageBuffer(buffer: Buffer, folder: string, fileNamePrefix
   const fileName = buildFileName(fileNamePrefix, ext);
   const falUrl = await uploadBufferToFalStorage(buffer, fileName, mimeType);
   if (falUrl) return falUrl;
+  const catboxUrl = await uploadBufferToCatboxStorage(buffer, fileName, mimeType);
+  if (catboxUrl) return catboxUrl;
   return saveBufferLocally(buffer, folder, ext);
 }
 
@@ -142,10 +165,6 @@ export async function ensureDurableImageUrl(
   const { folder, fileNamePrefix, forceRehostRemote = false } = options;
 
   if (isDurableImageUrl(imageUrl)) return imageUrl;
-
-  if (!forceRehostRemote && imageUrl.startsWith("http") && !isLikelyTemporaryRemoteUrl(imageUrl)) {
-    return imageUrl;
-  }
 
   if (imageUrl.startsWith("/")) {
     const { buffer, ext, mimeType } = await readLocalImage(imageUrl);

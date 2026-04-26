@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
+import { ensureDurableImageUrl } from "@/lib/storage/durableImages";
 
 function guessMimeType(ext: string): string {
   switch (ext.toLowerCase()) {
@@ -90,7 +91,17 @@ export async function persistPublicAsset(params: {
   if (falUrl) return { url: falUrl, storage: "fal" };
 
   const tmpFilesUrl = await uploadToTmpFiles(buffer, fileName, mimeType);
-  if (tmpFilesUrl) return { url: tmpFilesUrl, storage: "tmpfiles" };
+  if (tmpFilesUrl) {
+    const durableTmpFilesUrl = await ensureDurableImageUrl(tmpFilesUrl, {
+      folder,
+      fileNamePrefix,
+      forceRehostRemote: true,
+    });
+    return {
+      url: durableTmpFilesUrl,
+      storage: durableTmpFilesUrl === tmpFilesUrl ? "tmpfiles" : "local",
+    };
+  }
 
   const localUrl = await saveLocally(buffer, folder, ext);
   return { url: localUrl, storage: "local" };
@@ -110,7 +121,18 @@ export async function persistUserUpload(params: {
   if (falUrl) return { url: falUrl, fileName, storage: "fal" };
 
   const tmpFilesUrl = await uploadToTmpFiles(params.buffer, fileName, mimeType);
-  if (tmpFilesUrl) return { url: tmpFilesUrl, fileName, storage: "tmpfiles" };
+  if (tmpFilesUrl) {
+    const durableTmpFilesUrl = await ensureDurableImageUrl(tmpFilesUrl, {
+      folder: params.folder,
+      fileNamePrefix,
+      forceRehostRemote: true,
+    });
+    return {
+      url: durableTmpFilesUrl,
+      fileName,
+      storage: durableTmpFilesUrl === tmpFilesUrl ? "tmpfiles" : "local",
+    };
+  }
 
   const localUrl = await saveLocally(params.buffer, params.folder, ext);
   return { url: localUrl, fileName, storage: "local" };

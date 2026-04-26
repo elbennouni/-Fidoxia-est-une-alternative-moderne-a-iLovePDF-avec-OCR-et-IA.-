@@ -274,7 +274,10 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
       const saveRes = await fetch(`/api/characters/${charId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ referenceImageUrl: data.url }),
+        body: JSON.stringify({
+          referenceImageUrl: data.url,
+          faceReferenceImages: [data.url],
+        }),
       });
       const saveData = await saveRes.json();
       if (!saveRes.ok) throw new Error(saveData.error || "Enregistrement personnage échoué");

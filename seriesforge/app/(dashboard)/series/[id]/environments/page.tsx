@@ -102,7 +102,6 @@ export default function EnvironmentsPage({ params }: { params: Promise<{ id: str
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-
       const patchRes = await fetch(`/api/environments/${envId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
