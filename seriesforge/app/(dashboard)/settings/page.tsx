@@ -81,6 +81,30 @@ const API_KEYS = [
 ];
 
 const EMPTY_VALUES = Object.fromEntries(API_KEYS.map(({ key }) => [key, ""])) as Record<string, string>;
+const LOCAL_STORAGE_PREFIX = "sf_api_key_";
+
+function loadStoredKeys(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  const result: Record<string, string> = {};
+  for (const { key } of API_KEYS) {
+    const value = window.localStorage.getItem(`${LOCAL_STORAGE_PREFIX}${key}`);
+    if (value) result[key] = value;
+  }
+  return result;
+}
+
+function persistStoredKeys(values: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  for (const [key, value] of Object.entries(values)) {
+    if (value) {
+      window.localStorage.setItem(`${LOCAL_STORAGE_PREFIX}${key}`, value);
+    }
+  }
+}
+
+function maskValue(value: string): string {
+  return value ? `${value.slice(0, 8)}${"*".repeat(Math.max(0, value.length - 8))}` : "";
+}
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -99,8 +123,20 @@ export default function SettingsPage() {
       const res = await fetch("/api/settings");
       if (res.status === 401) { router.push("/login"); return; }
       const data = await res.json();
-      setCurrentKeys(data.keys || {});
-    } catch {}
+      const stored = loadStoredKeys();
+      const merged = { ...(data.keys || {}) };
+      for (const [key, value] of Object.entries(stored)) {
+        merged[key] = maskValue(value);
+      }
+      setCurrentKeys(merged);
+    } catch {
+      const stored = loadStoredKeys();
+      const masked: Record<string, string> = {};
+      for (const [key, value] of Object.entries(stored)) {
+        masked[key] = maskValue(value);
+      }
+      setCurrentKeys(masked);
+    }
   }
 
   async function handleSave(e: React.FormEvent) {
@@ -111,14 +147,8 @@ export default function SettingsPage() {
       for (const [k, v] of Object.entries(values)) {
         if (v.trim()) toSave[k] = v.trim();
       }
-      const res = await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(toSave),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      toast.success("✅ Clés API sauvegardées !");
+      persistStoredKeys(toSave);
+      toast.success("✅ Clés API sauvegardées sur cet appareil !");
       setValues(EMPTY_VALUES);
       fetchCurrentKeys();
     } catch (err) {
@@ -137,15 +167,8 @@ export default function SettingsPage() {
 
     setSavingKey(key);
     try {
-      const res = await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ [key]: value }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-
-      toast.success(`✅ ${API_KEYS.find((item) => item.key === key)?.label || key} sauvegardée !`);
+      persistStoredKeys({ [key]: value });
+      toast.success(`✅ ${API_KEYS.find((item) => item.key === key)?.label || key} sauvegardée sur cet appareil !`);
       setValues((prev) => ({ ...prev, [key]: "" }));
       fetchCurrentKeys();
     } catch (err) {
@@ -159,7 +182,12 @@ export default function SettingsPage() {
     setTesting(true);
     setTestResult("idle");
     try {
-      const res = await fetch("/api/settings/test-openai");
+      const stored = loadStoredKeys();
+      const res = await fetch("/api/settings/test-openai", {
+        headers: stored.OPENAI_API_KEY
+          ? { "x-openai-api-key": stored.OPENAI_API_KEY }
+          : {},
+      });
       const data = await res.json();
       if (data.ok) {
         setTestResult("ok");
@@ -183,6 +211,7 @@ export default function SettingsPage() {
           <Settings className="w-7 h-7 text-purple-400" /> Paramètres
         </h1>
         <p className="text-gray-400 mt-1">Configurez vos clés API directement ici</p>
+        <p className="text-xs text-yellow-400 mt-2">Les clés sont sauvegardées sur cet appareil pour fonctionner en production Vercel.</p>
       </div>
 
       {/* Current status */}

@@ -1,13 +1,14 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import OpenAI from "openai";
 import { getCurrentUser } from "@/lib/auth";
+import { getApiKey } from "@/lib/server/apiKeyOverride";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const apiKey = process.env.OPENAI_API_KEY;
+    const apiKey = getApiKey(req, "OPENAI_API_KEY");
     if (!apiKey) return NextResponse.json({ ok: false, error: "No API key configured" });
 
     const openai = new OpenAI({ apiKey });

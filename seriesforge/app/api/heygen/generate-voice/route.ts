@@ -6,8 +6,7 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { inferVoiceDirection } from "@/lib/audio/voiceDirection";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+import { getApiKey } from "@/lib/server/apiKeyOverride";
 
 async function saveAudioBuffer(buffer: Buffer, prefix = "voice"): Promise<string> {
   const fileName = `${prefix}-${uuidv4().slice(0, 8)}.mp3`;
@@ -20,9 +19,11 @@ async function saveAudioBuffer(buffer: Buffer, prefix = "voice"): Promise<string
 async function openAITTS(
   text: string,
   voiceName: string,
+  apiKey: string,
   direction?: ReturnType<typeof inferVoiceDirection>
 ): Promise<string | null> {
   try {
+    const openai = new OpenAI({ apiKey });
     const voiceMap: Record<string, string> = {
       "openai-onyx": "onyx", "openai-echo": "echo", "openai-fable": "fable",
       "openai-shimmer": "shimmer", "openai-nova": "nova", "openai-alloy": "alloy",
@@ -67,7 +68,9 @@ export async function POST(req: NextRequest) {
 
     // ─── OpenAI TTS voices (selected directly) ───────────────────────
     if (voiceId.startsWith("openai-")) {
-      const url = await openAITTS(text.trim(), voiceId, direction);
+      const openaiKey = getApiKey(req, "OPENAI_API_KEY");
+      if (!openaiKey) throw new Error("OPENAI_API_KEY manquante — ajoutez-la dans Paramètres");
+      const url = await openAITTS(text.trim(), voiceId, openaiKey, direction);
       if (!url) throw new Error("OpenAI TTS échoué — vérifiez OPENAI_API_KEY");
       await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
       return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "openai-tts-hd", direction: direction.label });
@@ -75,7 +78,7 @@ export async function POST(req: NextRequest) {
 
     // ─── ElevenLabs voices ────────────────────────────────────────────
     if (voiceId.startsWith("el-")) {
-      const elKey = process.env.ELEVENLABS_API_KEY;
+      const elKey = getApiKey(req, "ELEVENLABS_API_KEY");
       if (!elKey) throw new Error("ELEVENLABS_API_KEY manquante — ajoutez-la dans Paramètres");
       const realId = voiceId.replace(/^el-/, "");
       const res = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${realId}`, {
@@ -102,8 +105,9 @@ export async function POST(req: NextRequest) {
     // ─── Mock voices ──────────────────────────────────────────────────
     if (voiceId.startsWith("mock-")) {
       // Use OpenAI TTS as demo
-      if (process.env.OPENAI_API_KEY) {
-        const url = await openAITTS(text.trim(), characterName, direction);
+      const openaiKey = getApiKey(req, "OPENAI_API_KEY");
+      if (openaiKey) {
+        const url = await openAITTS(text.trim(), characterName, openaiKey, direction);
         if (url) {
           await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
           return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "openai-tts-hd-demo", direction: direction.label });
@@ -113,7 +117,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── HeyGen TTS ───────────────────────────────────────────────────
-    const apiKey = process.env.HEYGEN_API_KEY;
+    const apiKey = getApiKey(req, "HEYGEN_API_KEY");
     if (!apiKey) throw new Error("HEYGEN_API_KEY manquante");
 
     const ttsRes = await fetch("https://api.heygen.com/v1/audio/text_to_speech", {
@@ -137,7 +141,8 @@ export async function POST(req: NextRequest) {
 
       if (errCode === "voice_unavailable" || errMsg.includes("not supported") || errMsg.includes("invalid_parameter")) {
         // Fallback to OpenAI TTS
-        const url = await openAITTS(text.trim(), characterName, direction);
+        const openaiKey = getApiKey(req, "OPENAI_API_KEY");
+        const url = openaiKey ? await openAITTS(text.trim(), characterName, openaiKey, direction) : null;
         if (url) {
           await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
           return NextResponse.json({
@@ -153,7 +158,8 @@ export async function POST(req: NextRequest) {
 
     const errText = await ttsRes.text();
     // Fallback
-    const url = await openAITTS(text.trim(), characterName, direction);
+    const openaiKey = getApiKey(req, "OPENAI_API_KEY");
+    const url = openaiKey ? await openAITTS(text.trim(), characterName, openaiKey, direction) : null;
     if (url) {
       await prisma.scene.update({ where: { id: sceneId }, data: { voiceUrl: url } });
       return NextResponse.json({ success: true, audioUrl: url, character: characterName, engine: "openai-fallback", direction: direction.label });

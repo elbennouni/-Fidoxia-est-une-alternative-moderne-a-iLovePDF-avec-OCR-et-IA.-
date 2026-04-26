@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { getApiKey } from "@/lib/server/apiKeyOverride";
 
 // Great French voices on ElevenLabs
 const FRENCH_VOICES_MOCK = [
@@ -15,7 +16,7 @@ export async function GET(req: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const apiKey = getApiKey(req, "ELEVENLABS_API_KEY");
 
     if (!apiKey) {
       return NextResponse.json({ voices: FRENCH_VOICES_MOCK, source: "mock" });

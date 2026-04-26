@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
+import { getApiKeyOverride } from "@/lib/server/apiKeyOverride";
 
 const MOCK_VOICES = [
   { voice_id: "mock-fr-m-narrateur", name: "🎙 Narrateur TV — FR grave cinématique", language: "French", gender: "male", preview_audio: "" },
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
     const user = await getCurrentUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const apiKey = process.env.HEYGEN_API_KEY;
+    const apiKey = getApiKeyOverride(req, "HEYGEN_API_KEY") || process.env.HEYGEN_API_KEY;
 
     if (!apiKey) {
       return NextResponse.json({

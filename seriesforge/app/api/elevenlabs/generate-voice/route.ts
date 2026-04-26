@@ -5,6 +5,7 @@ import { writeFile, mkdir } from "fs/promises";
 import path from "path";
 import { v4 as uuidv4 } from "uuid";
 import { inferVoiceDirection } from "@/lib/audio/voiceDirection";
+import { getApiKey } from "@/lib/server/apiKeyOverride";
 
 export async function POST(req: NextRequest) {
   try {
@@ -28,14 +29,14 @@ export async function POST(req: NextRequest) {
       audioPrompt: scene.audioPrompt,
     });
 
-    const apiKey = process.env.ELEVENLABS_API_KEY;
+    const apiKey = getApiKey(req, "ELEVENLABS_API_KEY");
 
     // Extract real voice ID (remove "el-" prefix)
     const realVoiceId = voiceId.replace(/^el-/, "");
 
     if (!apiKey || voiceId.startsWith("el-fr-")) {
       // Mock mode or demo voice — use OpenAI TTS fallback
-      const openaiKey = process.env.OPENAI_API_KEY;
+      const openaiKey = getApiKey(req, "OPENAI_API_KEY");
       if (openaiKey) {
         const OpenAI = (await import("openai")).default;
         const openai = new OpenAI({ apiKey: openaiKey });

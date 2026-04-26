@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
+import ApiKeyFetchBridge from "@/components/providers/ApiKeyFetchBridge";
 
 export const metadata: Metadata = {
   title: "SeriesForge AI - Generate Animated Series",
@@ -11,6 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="antialiased min-h-screen bg-[#0a0a0f] text-gray-100">
+        <ApiKeyFetchBridge />
         <Toaster
           position="top-right"
           toastOptions={{
