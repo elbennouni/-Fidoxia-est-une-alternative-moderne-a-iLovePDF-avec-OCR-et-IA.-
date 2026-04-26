@@ -764,7 +764,7 @@ function PromptModal({
           </button>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] max-h-[calc(90vh-84px)]">
-          <div className="border-r border-[#2a2a3e] p-5 overflow-y-auto space-y-5">
+          <div className="border-r border-[#2a2a3e] p-5 overflow-y-auto space-y-5 max-h-[calc(90vh-84px)] pr-3 scrollbar-thin">
             <div>
               <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] p-3">
                 <div className="flex items-center justify-between gap-3 mb-2">
@@ -792,7 +792,7 @@ function PromptModal({
                     Les références manuelles actuelles ont déjà été prises en compte dans le prompt.
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-2 mt-3">
+                <div className="grid grid-cols-2 gap-2 mt-3 max-h-[260px] overflow-y-auto pr-1 scrollbar-thin">
                   {sceneReferences.length > 0 ? sceneReferences.map((reference) => (
                     <div key={reference.id} className="relative rounded-lg overflow-hidden border border-[#2a2a3e] bg-[#13131a]">
                       {reference.url ? (

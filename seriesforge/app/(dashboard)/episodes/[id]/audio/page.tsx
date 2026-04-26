@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use, useRef } from "react";
+import { useState, useEffect, use, useRef, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
@@ -21,6 +21,53 @@ interface HeyGenVoice {
   starfish_compatible?: boolean;
   provider?: string;
   visibility?: string;
+}
+
+type VoiceProviderKind = "elevenlabs" | "heygen" | "openai";
+
+function normalizeVoiceProvider(voice: HeyGenVoice): VoiceProviderKind {
+  if (voice.provider === "elevenlabs") return "elevenlabs";
+  if (voice.provider === "openai") return "openai";
+  return "heygen";
+}
+
+function normalizeVoiceLanguage(language?: string): "fr" | "en" | "other" {
+  const value = String(language || "").toLowerCase();
+  if (value === "fr" || value.includes("french") || value.includes("français") || value.includes("francais")) return "fr";
+  if (value === "en" || value.includes("english")) return "en";
+  return "other";
+}
+
+function sortVoicesByPriority(voices: HeyGenVoice[]): HeyGenVoice[] {
+  const providerPriority: Record<VoiceProviderKind, number> = {
+    elevenlabs: 0,
+    heygen: 1,
+    openai: 2,
+  };
+
+  const deduped = new Map<string, HeyGenVoice>();
+  for (const voice of voices) {
+    if (!deduped.has(voice.voice_id)) deduped.set(voice.voice_id, voice);
+  }
+
+  return [...deduped.values()].sort((left, right) => {
+    const providerDiff =
+      providerPriority[normalizeVoiceProvider(left)] - providerPriority[normalizeVoiceProvider(right)];
+    if (providerDiff !== 0) return providerDiff;
+
+    const languageDiff =
+      ({ fr: 0, en: 1, other: 2 } as const)[normalizeVoiceLanguage(left.language)] -
+      ({ fr: 0, en: 1, other: 2 } as const)[normalizeVoiceLanguage(right.language)];
+    if (languageDiff !== 0) return languageDiff;
+
+    const starfishDiff = Number(Boolean(right.starfish_compatible)) - Number(Boolean(left.starfish_compatible));
+    if (starfishDiff !== 0) return starfishDiff;
+
+    const customDiff = Number(right.visibility === "custom") - Number(left.visibility === "custom");
+    if (customDiff !== 0) return customDiff;
+
+    return left.name.localeCompare(right.name, "fr");
+  });
 }
 
 interface Character {
@@ -65,9 +112,12 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   const router = useRouter();
   const [episode, setEpisode] = useState<Episode | null>(null);
   const [loading, setLoading] = useState(true);
-  const [voices, setVoices] = useState<HeyGenVoice[]>([]);
-  const [voicesSource, setVoicesSource] = useState<"heygen" | "mock">("mock");
-  const [voicesNote, setVoicesNote] = useState("");
+  const [heygenVoices, setHeygenVoices] = useState<HeyGenVoice[]>([]);
+  const [heygenSource, setHeygenSource] = useState<"heygen" | "mock">("mock");
+  const [heygenNote, setHeygenNote] = useState("");
+  const [elevenLabsVoices, setElevenLabsVoices] = useState<HeyGenVoice[]>([]);
+  const [elevenLabsSource, setElevenLabsSource] = useState<"elevenlabs" | "mock">("mock");
+  const [elevenLabsNote, setElevenLabsNote] = useState("");
   const [loadingVoices, setLoadingVoices] = useState(true);
   const [generatingVoice, setGeneratingVoice] = useState<string | null>(null);
   const [showVoicePicker, setShowVoicePicker] = useState<{ charId: string; charName: string; isNarrator?: boolean } | null>(null);
@@ -91,7 +141,15 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   const [editValue, setEditValue] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
 
-  useEffect(() => { fetchData(); fetchVoices(); fetchElevenLabsVoices(); }, [id]);
+  const voices = useMemo(
+    () => sortVoicesByPriority([...elevenLabsVoices, ...heygenVoices]),
+    [elevenLabsVoices, heygenVoices]
+  );
+
+  useEffect(() => {
+    fetchData();
+    void loadVoiceCatalogs();
+  }, [id]);
 
   async function fetchData() {
     try {
@@ -106,29 +164,47 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
     } finally { setLoading(false); }
   }
 
-  async function fetchVoices() {
+  async function loadVoiceCatalogs() {
     setLoadingVoices(true);
+    try {
+      await Promise.all([fetchVoices(), fetchElevenLabsVoices()]);
+    } finally {
+      setLoadingVoices(false);
+    }
+  }
+
+  async function fetchVoices() {
     try {
       const res = await fetch("/api/heygen/voices");
       const data = await res.json();
-      setVoices(data.voices || []);
-      setVoicesSource(data.source || "mock");
-      if (data.note) setVoicesNote(data.note);
-    } finally { setLoadingVoices(false); }
+      setHeygenVoices((data.voices || []).map((voice: HeyGenVoice) => ({
+        ...voice,
+        provider: normalizeVoiceProvider(voice),
+      })));
+      setHeygenSource(data.source || "mock");
+      setHeygenNote(data.note || "");
+    } catch {
+      setHeygenVoices([]);
+      setHeygenSource("mock");
+      setHeygenNote("Impossible de charger les voix HeyGen pour le moment.");
+    }
   }
 
   async function fetchElevenLabsVoices() {
     try {
       const res = await fetch("/api/elevenlabs/voices");
       const data = await res.json();
-      if (data.voices?.length > 0) {
-        setVoices(prev => {
-          const elVoices = data.voices.map((v: HeyGenVoice) => ({ ...v, provider: "elevenlabs" }));
-          // Put ElevenLabs at top if we have API key
-          return data.source === "elevenlabs" ? [...elVoices, ...prev] : [...prev, ...elVoices];
-        });
-      }
-    } catch {}
+      setElevenLabsVoices((data.voices || []).map((voice: HeyGenVoice) => ({
+        ...voice,
+        provider: "elevenlabs",
+      })));
+      setElevenLabsSource(data.source || "mock");
+      setElevenLabsNote(data.note || "");
+    } catch {
+      setElevenLabsVoices([]);
+      setElevenLabsSource("mock");
+      setElevenLabsNote("Impossible de charger les voix ElevenLabs pour le moment.");
+    }
   }
 
   async function assignVoiceToCharacter(charId: string, voice: HeyGenVoice) {
@@ -272,7 +348,8 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
     setGeneratingVoice(`${scene.id}-Narrateur`);
     const t = toast.loading(`Génération voix narrateur (Scène ${scene.sceneNumber})...`);
     try {
-      const res = await fetch("/api/heygen/generate-voice", {
+      const endpoint = narratorVoiceId.startsWith("el-") ? "/api/elevenlabs/generate-voice" : "/api/heygen/generate-voice";
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sceneId: scene.id, text, voiceId: narratorVoiceId, characterName: "Narrateur" }),
@@ -281,7 +358,7 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
       if (!res.ok) throw new Error(data.error);
       toast.dismiss(t);
       if (data.mock) {
-        toast("Mode démo — ajoutez HEYGEN_API_KEY pour les vraies voix", { icon: "ℹ️" });
+        toast("Mode démo — ajoutez une clé ElevenLabs ou HeyGen pour les vraies voix", { icon: "ℹ️" });
       } else {
         toast.success("Voix narrateur générée !");
         fetchData();
@@ -304,7 +381,7 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
   async function generateVoiceForScene(scene: Scene, text: string, characterName: string) {
     const voiceId = getCharVoiceId(characterName);
     if (!voiceId) {
-      toast.error(`Assignez d'abord une voix HeyGen à ${characterName} (section Casting ci-dessus)`, { duration: 5000 });
+      toast.error(`Assignez d'abord une voix à ${characterName} (ElevenLabs prioritaire, HeyGen en second)`, { duration: 5000 });
       return;
     }
     setGeneratingVoice(`${scene.id}-${characterName}`);
@@ -321,7 +398,7 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
       if (!res.ok) throw new Error(data.error);
       toast.dismiss(t);
       if (data.mock) {
-        toast("Mode démo — ajoutez HEYGEN_API_KEY pour les vraies voix", { icon: "ℹ️" });
+        toast("Mode démo — ajoutez une clé ElevenLabs ou HeyGen pour les vraies voix", { icon: "ℹ️" });
       } else {
         toast.success(`Voix de ${characterName} générée !`);
         fetchData();
@@ -411,10 +488,19 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
     });
   }
 
-  const filteredVoices = voices.filter(v =>
-    (voiceFilter === "all" || v.language === voiceFilter || v.gender === voiceFilter) &&
-    (voiceProviderFilter === "all" || (v.provider || "heygen") === voiceProviderFilter)
-  );
+  const filteredVoices = voices.filter((voice) => {
+    const normalizedLanguage = normalizeVoiceLanguage(voice.language);
+    const normalizedProvider = normalizeVoiceProvider(voice);
+    const matchesLanguage =
+      voiceFilter === "all" ||
+      (voiceFilter === "fr" && normalizedLanguage === "fr") ||
+      (voiceFilter === "en" && normalizedLanguage === "en") ||
+      voice.gender === voiceFilter;
+    const matchesProvider =
+      voiceProviderFilter === "all" ||
+      normalizedProvider === voiceProviderFilter;
+    return matchesLanguage && matchesProvider;
+  });
 
   // Inline editable text field component
   function EditableField({
@@ -510,7 +596,7 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-3xl font-bold text-white flex items-center gap-3">
-              <Volume2 className="w-7 h-7 text-orange-400" /> Audio & Voix HeyGen
+              <Volume2 className="w-7 h-7 text-orange-400" /> Audio & Voix IA
             </h1>
             <p className="text-gray-400 mt-1">{episode.title}</p>
           </div>
@@ -532,25 +618,53 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
         </div>
       </div>
 
-      {/* HeyGen Connection Status */}
-      <div className={`mb-6 p-4 rounded-xl border flex items-start gap-3 ${voicesSource === "heygen" ? "bg-green-900/20 border-green-600/30" : "bg-orange-900/20 border-orange-600/30"}`}>
-        <div className={`p-1.5 rounded-full mt-0.5 ${voicesSource === "heygen" ? "bg-green-600" : "bg-orange-600"}`}>
-          {voicesSource === "heygen" ? <CheckCircle className="w-4 h-4 text-white" /> : <Mic className="w-4 h-4 text-white" />}
+      <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-3">
+        <div className={`p-4 rounded-xl border flex items-start gap-3 ${elevenLabsSource === "elevenlabs" ? "bg-green-900/20 border-green-600/30" : "bg-orange-900/20 border-orange-600/30"}`}>
+          <div className={`p-1.5 rounded-full mt-0.5 ${elevenLabsSource === "elevenlabs" ? "bg-green-600" : "bg-orange-600"}`}>
+            {elevenLabsSource === "elevenlabs" ? <CheckCircle className="w-4 h-4 text-white" /> : <Mic className="w-4 h-4 text-white" />}
+          </div>
+          <div className="flex-1">
+            <p className={`font-semibold text-sm ${elevenLabsSource === "elevenlabs" ? "text-green-300" : "text-orange-300"}`}>
+              {elevenLabsSource === "elevenlabs"
+                ? "✅ ElevenLabs prioritaire — voix réelles prêtes"
+                : "⚠ ElevenLabs non branché — fallback démo"}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              C'est la source voix prioritaire pour le narrateur et les personnages.
+            </p>
+            {elevenLabsNote && <p className="text-xs text-gray-500 mt-1">{elevenLabsNote}</p>}
+            {elevenLabsSource !== "elevenlabs" && (
+              <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300 mt-1 transition-colors">
+                <Settings className="w-3 h-3" /> Ajouter ELEVENLABS_API_KEY dans Paramètres
+              </Link>
+            )}
+          </div>
         </div>
-        <div className="flex-1">
-          <p className={`font-semibold text-sm ${voicesSource === "heygen" ? "text-green-300" : "text-orange-300"}`}>
-            {voicesSource === "heygen" ? "✅ HeyGen connecté — voix réelles disponibles" : "⚠ Mode démo — voix simulées"}
-          </p>
-          {voicesNote && <p className="text-xs text-gray-400 mt-0.5">{voicesNote}</p>}
-          {voicesSource !== "heygen" && (
-            <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300 mt-1 transition-colors">
-              <Settings className="w-3 h-3" /> Ajouter HEYGEN_API_KEY dans Paramètres
-            </Link>
-          )}
+
+        <div className={`p-4 rounded-xl border flex items-start gap-3 ${heygenSource === "heygen" ? "bg-green-900/20 border-green-600/30" : "bg-orange-900/20 border-orange-600/30"}`}>
+          <div className={`p-1.5 rounded-full mt-0.5 ${heygenSource === "heygen" ? "bg-green-600" : "bg-orange-600"}`}>
+            {heygenSource === "heygen" ? <CheckCircle className="w-4 h-4 text-white" /> : <Mic className="w-4 h-4 text-white" />}
+          </div>
+          <div className="flex-1">
+            <p className={`font-semibold text-sm ${heygenSource === "heygen" ? "text-green-300" : "text-orange-300"}`}>
+              {heygenSource === "heygen"
+                ? "✅ HeyGen secondaire — voix réelles disponibles"
+                : "⚠ HeyGen en démo — source secondaire"}
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              Utilisé en second, ou pour les voix/customs HeyGen quand tu les choisis explicitement.
+            </p>
+            {heygenNote && <p className="text-xs text-gray-500 mt-1">{heygenNote}</p>}
+            {heygenSource !== "heygen" && (
+              <Link href="/settings" className="inline-flex items-center gap-1 text-xs text-orange-400 hover:text-orange-300 mt-1 transition-colors">
+                <Settings className="w-3 h-3" /> Ajouter HEYGEN_API_KEY dans Paramètres
+              </Link>
+            )}
+          </div>
+          <a href="https://app.heygen.com/settings?nav=API" target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors whitespace-nowrap">
+            HeyGen <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
-        <a href="https://app.heygen.com/settings?nav=API" target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs text-gray-400 hover:text-white transition-colors whitespace-nowrap">
-          HeyGen <ExternalLink className="w-3 h-3" />
-        </a>
       </div>
 
       {/* Voice Picker Modal */}
@@ -562,6 +676,10 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                 <Mic className="w-5 h-5 text-orange-400" /> Voix pour {showVoicePicker.charName}
               </h2>
               <button onClick={() => setShowVoicePicker(null)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+
+            <div className="mb-4 rounded-xl border border-blue-600/20 bg-blue-900/10 px-3 py-2 text-xs text-blue-200">
+              Ordre conseillé: <span className="font-semibold text-white">ElevenLabs d'abord</span>, puis <span className="font-semibold text-white">HeyGen</span> en second.
             </div>
 
             {/* Filters */}
@@ -579,6 +697,26 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
               ))}
             </div>
 
+            <div className="flex gap-2 mb-4 flex-wrap">
+              {[
+                { id: "all" as const, label: "Tous providers" },
+                { id: "elevenlabs" as const, label: "🥇 ElevenLabs" },
+                { id: "heygen" as const, label: "🥈 HeyGen" },
+              ].map((filter) => (
+                <button
+                  key={filter.id}
+                  onClick={() => setVoiceProviderFilter(filter.id)}
+                  className={`px-3 py-1.5 rounded-lg text-sm transition-all ${
+                    voiceProviderFilter === filter.id
+                      ? "bg-blue-600 text-white"
+                      : "bg-[#1e1e2e] border border-[#2a2a3e] text-gray-400 hover:text-white"
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+
             {/* Voice list */}
             <div className="overflow-y-auto flex-1 space-y-2 scrollbar-thin pr-1">
               {loadingVoices ? (
@@ -589,10 +727,28 @@ export default function AudioPage({ params }: { params: Promise<{ id: string }> 
                 <div key={voice.voice_id} className={`flex items-center gap-3 p-3 border rounded-xl transition-all ${playingAudio === `voice-${voice.voice_id}` ? "border-green-500/50 bg-green-900/10" : "bg-[#1e1e2e] border-[#2a2a3e] hover:border-orange-500/50"}`}>
                   <div className="flex-1">
                     <p className="font-medium text-white text-sm">{voice.name}</p>
-                    <div className="flex gap-2 mt-0.5">
-                      <span className="text-xs text-gray-400">{voice.language === "fr" ? "🇫🇷" : voice.language === "en" ? "🇬🇧" : "🌐"} {voice.language}</span>
+                    <div className="flex gap-2 mt-0.5 flex-wrap">
+                      <span className={`text-[11px] px-2 py-0.5 rounded-full border ${
+                        normalizeVoiceProvider(voice) === "elevenlabs"
+                          ? "bg-violet-600/15 border-violet-600/30 text-violet-200"
+                          : normalizeVoiceProvider(voice) === "heygen"
+                            ? "bg-orange-600/15 border-orange-600/30 text-orange-200"
+                            : "bg-cyan-600/15 border-cyan-600/30 text-cyan-200"
+                      }`}>
+                        {normalizeVoiceProvider(voice) === "elevenlabs"
+                          ? "ElevenLabs"
+                          : normalizeVoiceProvider(voice) === "heygen"
+                            ? "HeyGen"
+                            : "OpenAI"}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {normalizeVoiceLanguage(voice.language) === "fr" ? "🇫🇷" : normalizeVoiceLanguage(voice.language) === "en" ? "🇬🇧" : "🌐"} {voice.language}
+                      </span>
                       <span className="text-xs text-gray-500">·</span>
                       <span className="text-xs text-gray-400">{voice.gender === "male" ? "♂" : "♀"} {voice.gender}</span>
+                      {normalizeVoiceProvider(voice) === "elevenlabs" && (
+                        <span className="text-[11px] text-violet-300">prioritaire</span>
+                      )}
                     </div>
                   </div>
                   {voice.preview_audio ? (
