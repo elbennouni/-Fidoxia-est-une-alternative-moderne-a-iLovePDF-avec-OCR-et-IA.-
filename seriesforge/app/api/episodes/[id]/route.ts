@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { getCharacterGroupAssets } from "@/lib/groups/characterGroups";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     const episode = await prisma.episode.findFirst({
       where: { id, series: { userId: user.id } },
       include: {
-        series: { include: { characters: true, environments: true } },
+        series: { include: { characters: true, environments: true, assets: true } },
         scenes: { orderBy: { sceneNumber: "asc" } },
       },
     });
@@ -55,6 +56,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     return NextResponse.json({
       ...episode,
+      characterGroups: getCharacterGroupAssets(episode.series.assets),
       scenes,
     });
   } catch (error) {

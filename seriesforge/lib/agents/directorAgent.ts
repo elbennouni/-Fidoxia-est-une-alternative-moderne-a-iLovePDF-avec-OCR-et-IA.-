@@ -5,6 +5,7 @@ import { generateAudioPlan } from "./audioAgent";
 import { checkAllScenes } from "./qualityControlAgent";
 import { autoFixScene } from "./autoFixAgent";
 import { buildConsistencyPrompt } from "./characterConsistencyAgent";
+import { upsertEpisodeScenes } from "@/lib/scenes/upsertScenes";
 
 export interface DirectorPipelineResult {
   success: boolean;
@@ -90,9 +91,6 @@ export async function runEpisodePipeline(episodeId: string): Promise<DirectorPip
     data: { script: script.synopsis },
   });
 
-  // STEP 3: Delete old scenes and create new ones
-  await prisma.scene.deleteMany({ where: { episodeId } });
-
   const scenesData = script.scenes.map(s => ({
     episodeId,
     sceneNumber: s.sceneNumber,
@@ -107,12 +105,9 @@ export async function runEpisodePipeline(episodeId: string): Promise<DirectorPip
     soundDesign: s.soundDesign,
     status: "scripted",
   }));
-
-  await prisma.scene.createMany({ data: scenesData });
-
-  const createdScenes = await prisma.scene.findMany({
-    where: { episodeId },
-    orderBy: { sceneNumber: "asc" },
+  const createdScenes = await upsertEpisodeScenes({
+    episodeId,
+    scenes: scenesData,
   });
 
   // STEP 4: Generate image + video prompts

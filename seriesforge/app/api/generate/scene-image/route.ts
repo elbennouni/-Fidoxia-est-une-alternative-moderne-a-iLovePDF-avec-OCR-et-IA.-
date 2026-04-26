@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
+import { persistSceneImageResult } from "@/lib/storage/sceneImages";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -101,11 +102,14 @@ Requirements: Maintain exact character visual identity as described. Same outfit
 
     const imageUrl = (response.data ?? [])[0]?.url;
     if (!imageUrl) throw new Error("No image generated");
-
-    await prisma.scene.update({ where: { id: sceneId }, data: { imageUrl } });
+    const durableImageUrl = await persistSceneImageResult({
+      sceneId,
+      generatorName: "DALL-E 3",
+      imageUrl,
+    });
 
     return NextResponse.json({
-      imageUrl,
+      imageUrl: durableImageUrl,
       sceneId,
       charactersUsed: presentChars.map((c: typeof presentChars[number]) => c.name),
       charactersWithPhoto: charsWithPhoto.map((c: typeof charsWithPhoto[number]) => c.name),

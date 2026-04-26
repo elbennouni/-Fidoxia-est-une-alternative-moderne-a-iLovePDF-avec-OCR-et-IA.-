@@ -7,6 +7,7 @@ import type { VisualDNA } from "@/lib/agents/visualDNAAgent";
 import { readFile } from "fs/promises";
 import path from "path";
 import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
+import { persistSceneImageResult } from "@/lib/storage/sceneImages";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -171,7 +172,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         const imageUrl = (response.data ?? [])[0]?.url;
         if (imageUrl) {
-          await prisma.scene.update({ where: { id: scene.id }, data: { imageUrl } });
+          const durableImageUrl = await persistSceneImageResult({
+            sceneId: scene.id,
+            imageUrl,
+            generatorName: "DALL-E 3 HD",
+            folder: "scenes",
+            fileNamePrefix: `scene-${scene.sceneNumber}`,
+          });
           results.push({ sceneNumber: scene.sceneNumber, success: true, imageUrl });
         }
       } catch (err) {

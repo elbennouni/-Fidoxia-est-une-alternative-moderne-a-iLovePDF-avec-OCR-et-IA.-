@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { buildScenePromptWithDNA } from "@/lib/agents/visualDNAAgent";
 import type { VisualDNA } from "@/lib/agents/visualDNAAgent";
 import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
+import { persistSceneImageAndHistory } from "@/lib/storage/sceneImages";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -100,19 +101,14 @@ export async function POST(req: NextRequest) {
     const imageUrl = (response.data ?? [])[0]?.url;
     if (!imageUrl) throw new Error("No image generated");
 
-    // Save previous image to history
-    const currentScene = await prisma.scene.findUnique({ where: { id: sceneId }, select: { imageUrl: true, imageHistory: true } });
-    let history: Array<{ url: string; generator: string; createdAt: string }> = [];
-    try { history = JSON.parse(currentScene?.imageHistory || "[]"); } catch {}
-    if (currentScene?.imageUrl) {
-      history.unshift({ url: currentScene.imageUrl, generator: "DALL-E 3 HD", createdAt: new Date().toISOString() });
-      if (history.length > 10) history = history.slice(0, 10);
-    }
-
-    await prisma.scene.update({ where: { id: sceneId }, data: { imageUrl, imageHistory: JSON.stringify(history) } });
+    const durableImageUrl = await persistSceneImageAndHistory({
+      sceneId,
+      imageUrl,
+      generatorName: "DALL-E 3 HD",
+    });
 
     return NextResponse.json({
-      imageUrl,
+      imageUrl: durableImageUrl,
       sceneId,
       charactersUsed: charsInScene.map((c: typeof charsInScene[number]) => c.name),
       missingDNA,

@@ -6,6 +6,7 @@ import {
   generateArtisticDirection,
   generateImagePromptsWithDA,
 } from "@/lib/agents/scenarioAnalystAgent";
+import { upsertScenesBySceneNumber } from "@/lib/scenes/upsertScenes";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -58,10 +59,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       },
     });
 
-    // STEP 4: Delete old scenes
-    await prisma.scene.deleteMany({ where: { episodeId: id } });
-
-    // STEP 5: Generate prompts for each scene and save
+    // STEP 4: Build new scene payloads without deleting existing media
+    // so previously generated scene images/videos/voices remain attached
+    // when scene numbers still match.
     const characters = series.characters.map((c: typeof series.characters[number]) => ({
       name: c.name,
       physicalDescription: c.physicalDescription,
@@ -108,7 +108,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       });
     }
 
-    await prisma.scene.createMany({ data: scenesToCreate });
+    await upsertScenesBySceneNumber(id, scenesToCreate);
 
     await prisma.episode.update({ where: { id }, data: { status: "complete" } });
 

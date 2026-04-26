@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
+import { getCharacterGroupAssets } from "@/lib/groups/characterGroups";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -22,7 +23,10 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     if (!series) return NextResponse.json({ error: "Series not found" }, { status: 404 });
 
-    return NextResponse.json(series);
+    return NextResponse.json({
+      ...series,
+      characterGroups: getCharacterGroupAssets(series.assets),
+    });
   } catch (error) {
     console.error(error);
     return NextResponse.json({ error: "Failed to fetch series" }, { status: 500 });

@@ -7,6 +7,7 @@ import { IMAGE_GENERATORS } from "@/lib/generators";
 import { resolveSceneCharacterReferences, validateNanoBananaAutoRoute } from "@/lib/imageWorkflows/nanoBanana";
 import { readFile } from "fs/promises";
 import path from "path";
+import { persistSceneImageResult } from "@/lib/storage/sceneImages";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
@@ -412,13 +413,14 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
       if (history.length > 10) history = history.slice(0, 10);
     }
 
-    await prisma.scene.update({
-      where: { id: sceneId },
-      data: { imageUrl, imageHistory: JSON.stringify(history) },
+    const durableImageUrl = await persistSceneImageResult({
+      imageUrl,
+      sceneId,
+      generatorName: generator.name,
     });
 
     return NextResponse.json({
-      imageUrl,
+      imageUrl: durableImageUrl,
       sceneId,
       generator: generator.name,
       refImagesUsed: refImages.map(r => `${r.name} (${r.type})`),

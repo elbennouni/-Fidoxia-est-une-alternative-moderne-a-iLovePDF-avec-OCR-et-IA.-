@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { tryEnsureDurableImageUrl } from "@/lib/storage/durableImages";
 import { resolveSceneCharacterReferences } from "@/lib/imageWorkflows/nanoBanana";
+import { persistSceneImageWithHistory } from "@/lib/storage/sceneImages";
 
 const NANOBANA_BASE = "https://nanophoto.ai/api/nano-banana-pro";
 
@@ -213,25 +214,14 @@ STYLE: ${series.visualStyle}, high quality animation render, vibrant colors, pro
     const imageUrl = await pollStatus(nanoBanaKey, generationId);
     if (!imageUrl) throw new Error("Pas d'image dans le résultat");
 
-    // Save to history
-    const currentScene = await prisma.scene.findUnique({
-      where: { id: sceneId },
-      select: { imageUrl: true, imageHistory: true },
-    });
-    let history: Array<{ url: string; generator: string; createdAt: string }> = [];
-    try { history = JSON.parse(currentScene?.imageHistory || "[]"); } catch {}
-    if (currentScene?.imageUrl) {
-      history.unshift({ url: currentScene.imageUrl, generator: "Nano Banana Pro", createdAt: new Date().toISOString() });
-      if (history.length > 10) history = history.slice(0, 10);
-    }
-
-    await prisma.scene.update({
-      where: { id: sceneId },
-      data: { imageUrl, imageHistory: JSON.stringify(history) },
+    const durableImageUrl = await persistSceneImageWithHistory({
+      sceneId,
+      imageUrl,
+      generatorName: "Nano Banana Pro",
     });
 
     return NextResponse.json({
-      imageUrl,
+      imageUrl: durableImageUrl,
       sceneId,
       generator: "Nano Banana Pro",
       mode,

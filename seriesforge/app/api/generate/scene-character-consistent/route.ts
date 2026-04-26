@@ -11,6 +11,7 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
 import { resolveSceneCharacterReferences } from "@/lib/imageWorkflows/nanoBanana";
+import { persistSceneImageResult } from "@/lib/storage/sceneImages";
 
 type SeriesCharacter = {
   id: string;
@@ -260,20 +261,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (!imageUrl) throw new Error(`Aucune image générée avec ${modelUsed}`);
-
-    // Save history
-    const currentScene = await prisma.scene.findUnique({ where: { id: sceneId }, select: { imageUrl: true, imageHistory: true } });
-    let history: Array<{ url: string; generator: string; createdAt: string }> = [];
-    try { history = JSON.parse(currentScene?.imageHistory || "[]"); } catch {}
-    if (currentScene?.imageUrl) {
-      history.unshift({ url: currentScene.imageUrl, generator: modelUsed, createdAt: new Date().toISOString() });
-      if (history.length > 10) history = history.slice(0, 10);
-    }
-
-    await prisma.scene.update({ where: { id: sceneId }, data: { imageUrl, imageHistory: JSON.stringify(history) } });
+    const durableImageUrl = await persistSceneImageResult({
+      sceneId,
+      imageUrl,
+      generatorName: modelUsed,
+    });
 
     return NextResponse.json({
-      imageUrl, sceneId, modelUsed, refImagesUsed,
+      imageUrl: durableImageUrl, sceneId, modelUsed, refImagesUsed,
       charsWithPhoto: charsWithPhoto.map((c: SeriesCharacter) => c.name),
       charsWithoutPhoto: presentChars.filter((c: SeriesCharacter) => !charsWithPhoto.some((cp: SeriesCharacter) => cp.id === c.id)).map((c: SeriesCharacter) => c.name),
     });

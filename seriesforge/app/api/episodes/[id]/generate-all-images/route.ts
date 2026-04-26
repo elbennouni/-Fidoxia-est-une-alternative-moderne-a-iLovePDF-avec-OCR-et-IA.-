@@ -3,6 +3,7 @@ import OpenAI from "openai";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
+import { persistSceneGeneratedImage } from "@/lib/storage/sceneImages";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -94,11 +95,15 @@ Maintain exact character identity. Same outfits. Same physical appearance. High 
 
         const imageUrl = (response.data ?? [])[0]?.url;
         if (imageUrl) {
-          await prisma.scene.update({ where: { id: scene.id }, data: { imageUrl } });
+          const durableImageUrl = await persistSceneGeneratedImage({
+            sceneId: scene.id,
+            imageUrl,
+            generatorName: "DALL-E 3",
+          });
           results.push({
             sceneNumber: scene.sceneNumber,
             success: true,
-            imageUrl,
+            imageUrl: durableImageUrl,
             characters: presentChars.map((c: typeof presentChars[number]) => c.name),
             environment: matchedEnv?.name,
           });
