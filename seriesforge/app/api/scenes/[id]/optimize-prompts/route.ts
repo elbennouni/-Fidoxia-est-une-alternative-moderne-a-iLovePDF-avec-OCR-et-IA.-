@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { optimizeScenePrompts } from "@/lib/agents/promptOptimizerAgent";
+import {
+  buildSceneReferencePromptNotes,
+  getSceneReferenceAssets,
+  serializeSceneReferenceMetadata,
+} from "@/lib/scenes/sceneReferenceAssets";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -24,6 +29,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
               include: {
                 characters: true,
                 environments: true,
+                assets: true,
               },
             },
           },
@@ -47,6 +53,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const environment = scene.episode.series.environments.find((item) =>
       scene.location?.toLowerCase().includes(item.name.toLowerCase())
     );
+    const sceneReferences = getSceneReferenceAssets(scene.episode.series.assets, scene.id);
+    const manualReferences = buildSceneReferencePromptNotes(sceneReferences);
 
     const optimized = await optimizeScenePrompts({
       sceneNumber: scene.sceneNumber,
@@ -65,6 +73,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       visualStyle: scene.episode.series.visualStyle,
       format: scene.episode.format,
       characters,
+      manualReferences,
       environments: environment ? [{
         name: environment.name,
         description: environment.description,
@@ -81,6 +90,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       where: { id: scene.id },
       data: updateData,
     });
+
+    await Promise.all(
+      sceneReferences.map((reference) =>
+        prisma.asset.update({
+          where: { id: reference.id },
+          data: {
+            prompt: serializeSceneReferenceMetadata({
+              ...reference.metadata,
+              promptAppliedAt: new Date().toISOString(),
+            }),
+          },
+        })
+      )
+    );
 
     return NextResponse.json({
       success: true,

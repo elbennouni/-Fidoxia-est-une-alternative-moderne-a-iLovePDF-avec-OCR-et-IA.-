@@ -95,6 +95,19 @@ interface Scene {
     requiresAdminOverride: boolean;
     issues: Array<{ level: "warning" | "error"; code: string; message: string }>;
   };
+  sceneReferences?: Array<{
+    id: string;
+    name: string;
+    url: string | null;
+    createdAt: string;
+    metadata: {
+      sceneId: string;
+      note?: string;
+      kind?: "manual" | "prop" | "moodboard";
+      promptAppliedAt?: string | null;
+    };
+  }>;
+  sceneReferencesNeedPromptRefresh?: boolean;
 }
 
 interface EpisodePayload {
@@ -148,7 +161,10 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
   const [openGeneratorSceneId, setOpenGeneratorSceneId] = useState<string | null>(null);
   const [optimizingPrompt, setOptimizingPrompt] = useState<{ sceneId: string; type: "image" | "video" } | null>(null);
   const [uploadTarget, setUploadTarget] = useState<{ type: "character" | "environment"; id: string; referenceKind: "face" | "fullBody" | "outfit" | "environment" } | null>(null);
+  const [sceneReferenceUploadTarget, setSceneReferenceUploadTarget] = useState<{ sceneId: string; sceneNumber: number } | null>(null);
+  const [uploadingSceneReference, setUploadingSceneReference] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const sceneReferenceInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchData(); }, [id]);
 
@@ -267,6 +283,69 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
     }
   }
 
+  async function uploadSceneReferences(scene: Scene, files: FileList | null) {
+    const selectedFiles = Array.from(files || []).slice(0, 4);
+    if (selectedFiles.length === 0) return;
+
+    setUploadingSceneReference(scene.id);
+    const t = toast.loading(`Upload de ${selectedFiles.length} référence(s) de scène...`);
+    try {
+      for (const [index, file] of selectedFiles.entries()) {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("folder", "scene-references");
+        const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
+        const uploadData = await uploadRes.json();
+        if (!uploadRes.ok) throw new Error(uploadData.error || "Upload impossible");
+
+        const createRes = await fetch("/api/assets/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            seriesId: id,
+            type: "scene_reference",
+            name: `Scene ${scene.sceneNumber} ref ${index + 1}`,
+            url: uploadData.url,
+            prompt: JSON.stringify({
+              sceneId: scene.id,
+              kind: "manual",
+              note: "",
+              promptAppliedAt: null,
+            }),
+            reusable: false,
+          }),
+        });
+        const createData = await createRes.json();
+        if (!createRes.ok) throw new Error(createData.error || "Création de la référence impossible");
+      }
+
+      toast.dismiss(t);
+      toast.success("Nouvelles images ajoutées. Regénérez le prompt pour qu'elles soient prises en compte.");
+      await fetchData();
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Upload impossible");
+    } finally {
+      setUploadingSceneReference(null);
+      setSceneReferenceUploadTarget(null);
+    }
+  }
+
+  async function removeSceneReference(assetId: string) {
+    const t = toast.loading("Suppression de la référence de scène...");
+    try {
+      const res = await fetch(`/api/assets/${assetId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Suppression impossible");
+      toast.dismiss(t);
+      toast.success("Référence de scène supprimée");
+      await fetchData();
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Suppression impossible");
+    }
+  }
+
   async function handleReferenceUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !uploadTarget) return;
@@ -367,6 +446,21 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleReferenceUpload} />
+      <input
+        ref={sceneReferenceInputRef}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (!sceneReferenceUploadTarget) return;
+          const scene = scenes.find((item) => item.id === sceneReferenceUploadTarget.sceneId);
+          if (scene) {
+            void uploadSceneReferences(scene, e.target.files);
+          }
+          e.target.value = "";
+        }}
+      />
       {promptScene && (
         <PromptModal
           scene={promptScene}
@@ -381,6 +475,12 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
             fileInputRef.current?.click();
           }}
           onRemoveCharacterReference={removeCharacterReference}
+          onUploadSceneReferences={(scene) => {
+            setSceneReferenceUploadTarget({ sceneId: scene.id, sceneNumber: scene.sceneNumber });
+            sceneReferenceInputRef.current?.click();
+          }}
+          onRemoveSceneReference={removeSceneReference}
+          uploadingSceneReference={uploadingSceneReference}
         />
       )}
 
@@ -518,6 +618,12 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
                         {scene.voiceUrl ? "audio lipsync prêt" : "audio lipsync manquant"}
                       </span>
                     )}
+                    {(scene.sceneReferences?.length || 0) > 0 && (
+                      <span className={`text-xs px-2 py-0.5 rounded-full border ${scene.sceneReferencesNeedPromptRefresh ? "bg-amber-600/20 border-amber-600/30 text-amber-300" : "bg-cyan-600/20 border-cyan-600/30 text-cyan-300"}`}>
+                        <Upload className="inline w-3 h-3 mr-1" />
+                        {scene.sceneReferences?.length} refs scène
+                      </span>
+                    )}
                   </div>
 
                   <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] p-3">
@@ -598,6 +704,11 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
                       Ajoutez une photo de référence pour chaque personnage avant génération multi-personnages.
                     </p>
                   )}
+                  {scene.sceneReferencesNeedPromptRefresh && (
+                    <p className="text-xs text-amber-300">
+                      De nouvelles images manuelles ont été ajoutées pour cette scène. Ouvrez le prompt et regénérez-le avant la prochaine génération.
+                    </p>
+                  )}
                 </div>
               </div>
             );
@@ -618,6 +729,9 @@ function PromptModal({
   optimizingPrompt,
   onUploadReference,
   onRemoveCharacterReference,
+  onUploadSceneReferences,
+  onRemoveSceneReference,
+  uploadingSceneReference,
 }: {
   scene: Scene;
   characters: CharacterRef[];
@@ -628,10 +742,14 @@ function PromptModal({
   optimizingPrompt: { sceneId: string; type: "image" | "video" } | null;
   onUploadReference: (type: "character" | "environment", id: string, referenceKind: "face" | "fullBody" | "outfit" | "environment") => void;
   onRemoveCharacterReference: (character: CharacterRef, referenceKind: "face" | "fullBody" | "outfit", url: string) => Promise<void>;
+  onUploadSceneReferences: (scene: Scene) => void;
+  onRemoveSceneReference: (assetId: string) => Promise<void>;
+  uploadingSceneReference: string | null;
 }) {
   const characterNames = parseJsonArray(scene.charactersJson);
   const payloadReferences = scene.generationPayload?.referenceImages || [];
   const preflightIssues = scene.consistency?.issues || [];
+  const sceneReferences = scene.sceneReferences || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -647,6 +765,63 @@ function PromptModal({
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] max-h-[calc(90vh-84px)]">
           <div className="border-r border-[#2a2a3e] p-5 overflow-y-auto space-y-5">
+            <div>
+              <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] p-3">
+                <div className="flex items-center justify-between gap-3 mb-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-gray-500">Références manuelles de scène</p>
+                    <p className="text-sm text-gray-300 mt-1">
+                      Ajoutez 3 à 4 images pour guider précisément la mise en scène, les props, le décor, la tenue ou la composition.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => onUploadSceneReferences(scene)}
+                    disabled={uploadingSceneReference === scene.id}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-cyan-600/20 border border-cyan-600/30 text-cyan-300 text-xs disabled:opacity-60"
+                  >
+                    {uploadingSceneReference === scene.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                    ajouter 3-4 images
+                  </button>
+                </div>
+                {scene.sceneReferencesNeedPromptRefresh ? (
+                  <div className="rounded-lg border border-amber-600/30 bg-amber-900/10 px-3 py-2 text-xs text-amber-300">
+                    Vous avez téléchargé de nouvelles images. Il faut regénérer le prompt avec ces nouveaux éléments pour refaire la scène proprement.
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-emerald-600/30 bg-emerald-900/10 px-3 py-2 text-xs text-emerald-300">
+                    Les références manuelles actuelles ont déjà été prises en compte dans le prompt.
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-2 mt-3">
+                  {sceneReferences.length > 0 ? sceneReferences.map((reference) => (
+                    <div key={reference.id} className="relative rounded-lg overflow-hidden border border-[#2a2a3e] bg-[#13131a]">
+                      {reference.url ? (
+                        <img src={reference.url} alt={reference.name} className="w-full aspect-square object-cover" />
+                      ) : (
+                        <div className="aspect-square flex items-center justify-center text-gray-600 text-xs">vide</div>
+                      )}
+                      <div className="p-2">
+                        <p className="text-[11px] text-white truncate">{reference.name}</p>
+                        <p className="text-[11px] text-gray-500">
+                          {new Date(reference.createdAt).toLocaleDateString("fr-FR")}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => onRemoveSceneReference(reference.id)}
+                        className="absolute top-1 right-1 p-1 rounded-full bg-black/70 text-white hover:bg-red-600"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )) : (
+                    <div className="col-span-2 rounded-lg border border-dashed border-[#2a2a3e] p-4 text-center text-xs text-gray-500">
+                      Aucune référence manuelle de scène ajoutée pour le moment.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             <div>
               <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Références personnages</p>
               <div className="grid grid-cols-1 gap-3">
@@ -753,7 +928,7 @@ function PromptModal({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-wide text-gray-500">Prompt image</p>
-                <p className="text-sm text-gray-400 mt-1">Sans texte dans l’image, avec mise en scène propre et cohérence des références.</p>
+                <p className="text-sm text-gray-400 mt-1">Sans texte dans l’image, avec mise en scène propre et cohérence des références, y compris les nouvelles images manuelles.</p>
               </div>
               <div className="flex gap-2">
                 {scene.imagePrompt && (

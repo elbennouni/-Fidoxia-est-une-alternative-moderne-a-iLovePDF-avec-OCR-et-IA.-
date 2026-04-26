@@ -15,6 +15,11 @@ import { getCurrentUser } from "@/lib/auth";
 import { tryEnsureDurableImageUrl } from "@/lib/storage/durableImages";
 import { resolveSceneCharacterReferences } from "@/lib/imageWorkflows/nanoBanana";
 import { persistSceneImageWithHistory } from "@/lib/storage/sceneImages";
+import { getCharacterGroupAssets, matchGroupAssetsForScene } from "@/lib/groups/characterGroups";
+import {
+  buildSceneReferencePromptBlock,
+  getSceneReferenceAssets,
+} from "@/lib/scenes/sceneReferenceAssets";
 
 const NANOBANA_BASE = "https://nanophoto.ai/api/nano-banana-pro";
 
@@ -84,7 +89,7 @@ export async function POST(req: NextRequest) {
       include: {
         episode: {
           include: {
-            series: { include: { characters: true, environments: true } },
+            series: { include: { characters: true, environments: true, assets: true } },
           },
         },
       },
@@ -129,6 +134,29 @@ export async function POST(req: NextRequest) {
       if (url) inputImageUrls.push(url);
     }
 
+    const matchedGroups = matchGroupAssetsForScene({
+      groups: getCharacterGroupAssets(series.assets || []),
+      sceneCharacters: sceneCharNames,
+      sceneText: [scene.location, scene.action, scene.narration, scene.dialogue].filter(Boolean).join(" "),
+    }).slice(0, 2);
+    const manualSceneReferences = getSceneReferenceAssets(series.assets || [], scene.id)
+      .filter((reference) => Boolean(reference.url))
+      .slice(0, 4);
+
+    for (const group of matchedGroups) {
+      if (group.url && inputImageUrls.length < 8) {
+        const url = await getPublicUrl(group.url);
+        if (url) inputImageUrls.push(url);
+      }
+    }
+
+    for (const reference of manualSceneReferences) {
+      if (reference.url && inputImageUrls.length < 8) {
+        const url = await getPublicUrl(reference.url);
+        if (url) inputImageUrls.push(url);
+      }
+    }
+
     // Build CINEMATIC SCENE prompt — not a portrait
     const envDesc = matchedEnv
       ? `${matchedEnv.name} — ${matchedEnv.description}${matchedEnv.lighting ? `. Lighting: ${matchedEnv.lighting}` : ""}${matchedEnv.mood ? `. Mood: ${matchedEnv.mood}` : ""}`
@@ -168,6 +196,11 @@ COMPOSITION RULES:
 - Same character appearance as reference photos provided
 
 STYLE: ${series.visualStyle}, high quality animation render, vibrant colors, professional composition`;
+    const groupReferenceBlock = matchedGroups.length > 0
+      ? `\nGROUP REFERENCES: ${matchedGroups.map((group) => `${group.name} (${group.metadata.category})`).join(" | ")}. Preserve the same team or family composition shown in these group images when the scene calls for it.`
+      : "";
+    const manualReferenceBlock = buildSceneReferencePromptBlock(manualSceneReferences);
+    const finalPrompt = `${prompt}${groupReferenceBlock}${manualReferenceBlock ? `\n${manualReferenceBlock}` : ""}`;
 
     const mode = inputImageUrls.length > 0 ? "edit" : "generate";
 
@@ -178,7 +211,7 @@ STYLE: ${series.visualStyle}, high quality animation render, vibrant colors, pro
     }
 
     const body: Record<string, unknown> = {
-      prompt: prompt.slice(0, 1500),
+      prompt: finalPrompt.slice(0, 1500),
       mode,
       aspectRatio,
       imageQuality: "2K",

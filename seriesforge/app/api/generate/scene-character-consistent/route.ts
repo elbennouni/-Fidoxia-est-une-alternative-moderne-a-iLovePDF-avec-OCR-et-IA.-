@@ -13,6 +13,10 @@ import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
 import { resolveSceneCharacterReferences } from "@/lib/imageWorkflows/nanoBanana";
 import { persistSceneImageResult } from "@/lib/storage/sceneImages";
 import { getCharacterGroupAssets, matchGroupAssetsForScene } from "@/lib/groups/characterGroups";
+import {
+  buildSceneReferencePromptBlock,
+  getSceneReferenceAssets,
+} from "@/lib/scenes/sceneReferenceAssets";
 
 type SeriesCharacter = {
   id: string;
@@ -159,6 +163,9 @@ export async function POST(req: NextRequest) {
       sceneCharacters: sceneCharNames,
       sceneText: [scene.location, scene.action, scene.narration, scene.dialogue].filter(Boolean).join(" "),
     }).slice(0, 2);
+    const manualSceneReferences = getSceneReferenceAssets(series.assets || [], scene.id)
+      .filter((reference) => Boolean(reference.url))
+      .slice(0, 4);
 
     const envDesc = matchedEnv
       ? `${matchedEnv.name} — ${matchedEnv.description}${matchedEnv.lighting ? `. ${matchedEnv.lighting}` : ""}${matchedEnv.mood ? `. ${matchedEnv.mood}` : ""}`
@@ -174,13 +181,14 @@ export async function POST(req: NextRequest) {
     const groupLines = matchedGroups.length > 0
       ? `\nGROUP REFERENCES:\n${matchedGroups.map((group) => `${group.name} (${group.metadata.category}) — members: ${group.metadata.members.join(", ")}`).join("\n")}`
       : "";
+    const manualReferenceBlock = buildSceneReferencePromptBlock(manualSceneReferences);
 
     const prompt = buildScenePrompt({
       action: scene.action || "dramatic cinematic moment",
       envDesc,
       emotion: scene.emotion || "dramatic",
       camera: scene.camera || "medium shot",
-      charLines: `${charLines}${groupLines}`,
+      charLines: `${charLines}${groupLines}${manualReferenceBlock ? `\n${manualReferenceBlock}` : ""}`,
       visualStyle: series.visualStyle,
     });
 

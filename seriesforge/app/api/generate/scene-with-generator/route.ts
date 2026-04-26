@@ -9,6 +9,10 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { persistSceneImageResult } from "@/lib/storage/sceneImages";
 import { getCharacterGroupAssets, matchGroupAssetsForScene } from "@/lib/groups/characterGroups";
+import {
+  buildSceneReferencePromptBlock,
+  getSceneReferenceAssets,
+} from "@/lib/scenes/sceneReferenceAssets";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
@@ -161,6 +165,9 @@ export async function POST(req: NextRequest) {
         scene.dialogue || "",
       ].join(" "),
     }).slice(0, 2);
+    const manualSceneReferences = getSceneReferenceAssets(series.assets, scene.id)
+      .filter((reference) => Boolean(reference.url))
+      .slice(0, 4);
 
     const envPreview = (matchedEnv as typeof matchedEnv & { previewImageUrl?: string | null })?.previewImageUrl;
 
@@ -178,6 +185,11 @@ export async function POST(req: NextRequest) {
           name: group.name,
           url: group.url!,
         })),
+      ...manualSceneReferences.map((reference, index) => ({
+        type: "scene_reference",
+        name: reference.name || `scene-reference-${index + 1}`,
+        url: reference.url!,
+      })),
       ...(envPreview ? [{ type: "environment", name: matchedEnv!.name, url: envPreview }] : []),
     ];
 
@@ -246,8 +258,9 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
     const groupReferenceBlock = matchedGroups.length > 0
       ? `\nGROUP REFERENCES: ${matchedGroups.map((group) => `${group.name} (${group.metadata.category})`).join(" | ")}. If the scene is about a team/family/group presentation, preserve the exact full group composition from the provided group reference images, especially when placing the presenter in the center and the group around them.`
       : "";
+    const manualReferenceBlock = buildSceneReferencePromptBlock(manualSceneReferences);
 
-    const promptWithGroups = `${prompt}${groupReferenceBlock}`;
+    const promptWithGroups = `${prompt}${groupReferenceBlock}${manualReferenceBlock ? `\n${manualReferenceBlock}` : ""}`;
 
     // ─── GENERATE ───────────────────────────────────────────────────────────────
 

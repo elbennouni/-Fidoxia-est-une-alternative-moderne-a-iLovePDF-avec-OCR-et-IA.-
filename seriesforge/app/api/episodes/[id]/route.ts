@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { getCharacterGroupAssets } from "@/lib/groups/characterGroups";
+import {
+  getSceneReferenceAssets,
+  sceneReferencesNeedPromptRefresh,
+} from "@/lib/scenes/sceneReferenceAssets";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -40,11 +44,15 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         scene.location?.toLowerCase().includes(environment.name.toLowerCase())
       ) || episode.series.environments[0] || null;
 
+      const sceneReferences = getSceneReferenceAssets(episode.series.assets, scene.id);
+
       return {
         ...scene,
         sceneCharacters,
         imageHistory,
         characterRefs,
+        sceneReferences,
+        sceneReferencesNeedPromptRefresh: sceneReferencesNeedPromptRefresh(sceneReferences),
         environmentRef: matchedEnvironment ? {
           id: matchedEnvironment.id,
           name: matchedEnvironment.name,

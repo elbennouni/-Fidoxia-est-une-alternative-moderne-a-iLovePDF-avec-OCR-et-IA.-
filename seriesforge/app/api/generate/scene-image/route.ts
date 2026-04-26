@@ -5,6 +5,10 @@ import { getCurrentUser } from "@/lib/auth";
 import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
 import { persistSceneImageResult } from "@/lib/storage/sceneImages";
 import { getCharacterGroupAssets, matchGroupAssetsForScene } from "@/lib/groups/characterGroups";
+import {
+  buildSceneReferencePromptBlock,
+  getSceneReferenceAssets,
+} from "@/lib/scenes/sceneReferenceAssets";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -49,6 +53,9 @@ export async function POST(req: NextRequest) {
       sceneCharacters: sceneCharNames,
       sceneText: [scene.location, scene.action, scene.narration, scene.dialogue].filter(Boolean).join(" "),
     });
+    const manualSceneReferences = getSceneReferenceAssets(series.assets, scene.id)
+      .filter((reference) => Boolean(reference.url))
+      .slice(0, 4);
 
     if (presentChars.length > 1) {
       const multiCharacterResult = await generateSceneWithNanoBanana({
@@ -77,6 +84,7 @@ export async function POST(req: NextRequest) {
     const groupBlock = matchedGroups.length > 0
       ? `GROUP REFERENCES:\n${matchedGroups.map((group) => `${group.name} (${group.metadata.category}) — members: ${group.metadata.members.join(", ")}`).join("\n")}`
       : "";
+    const manualReferenceBlock = buildSceneReferencePromptBlock(manualSceneReferences);
 
     // Build environment block
     const envBlock = matchedEnv
@@ -91,6 +99,8 @@ export async function POST(req: NextRequest) {
 ${charBlock}
 
 ${groupBlock}
+
+${manualReferenceBlock}
 
 ${envBlock}
 

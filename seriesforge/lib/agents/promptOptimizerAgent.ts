@@ -32,6 +32,7 @@ interface PromptOptimizeInput {
     lighting?: string | null;
     mood?: string | null;
   }>;
+  manualReferences?: string[];
   visualStyle: string;
   format: string;
 }
@@ -46,10 +47,13 @@ function buildFallbackResult(input: PromptOptimizeInput): PromptOptimizationResu
   const environmentText = environmentBlock
     ? `${environmentBlock.name}: ${environmentBlock.description}. ${environmentBlock.lighting || ""} ${environmentBlock.mood || ""}`.trim()
     : input.location || "Décor à préciser";
+  const manualReferenceBlock = input.manualReferences && input.manualReferences.length > 0
+    ? ` Références manuelles obligatoires à respecter: ${input.manualReferences.join(" | ")}.`
+    : "";
 
   return {
-    imagePrompt: `${input.visualStyle}, ${input.format}, cinematic keyframe. Scene ${input.sceneNumber}. ${input.action || ""} ${charactersBlock} Décor: ${environmentText}. Caméra: ${input.camera || "medium shot"}. Emotion: ${input.emotion || "cinématique"}. Conserver les visages, les tenues et le cadrage cohérent.`,
-    videoPrompt: `${input.visualStyle}, ${input.format}, cinematic motion shot. Scene ${input.sceneNumber}. ${input.action || ""} Dialogue: ${input.dialogue || "none"}. Narration: ${input.narration || "none"}. Caméra: ${input.camera || "push-in cinématique"}. Garder le mouvement, la lisibilité des personnages et éviter toute scène statique.`,
+    imagePrompt: `${input.visualStyle}, ${input.format}, cinematic keyframe. Scene ${input.sceneNumber}. ${input.action || ""} ${charactersBlock} Décor: ${environmentText}. Caméra: ${input.camera || "medium shot"}. Emotion: ${input.emotion || "cinématique"}.${manualReferenceBlock} Conserver les visages, les tenues, les accessoires uploadés et le cadrage cohérent.`,
+    videoPrompt: `${input.visualStyle}, ${input.format}, cinematic motion shot. Scene ${input.sceneNumber}. ${input.action || ""} Dialogue: ${input.dialogue || "none"}. Narration: ${input.narration || "none"}. Caméra: ${input.camera || "push-in cinématique"}.${manualReferenceBlock} Garder le mouvement, la lisibilité des personnages et éviter toute scène statique.`,
     alternativeDirection: `Alternative IA: transformer la scène ${input.sceneNumber} en variation plus cinématique avec un axe caméra plus lisible sur ${input.location || "le décor"} et davantage de contraste émotionnel.`,
   };
 }
@@ -71,6 +75,7 @@ Règles:
 - conserver la scène, les personnages, le décor et l'intention dramatique
 - améliorer le cadrage, la lisibilité, le mouvement, la cohérence visuelle et la qualité du rendu
 - proposer une variation de mise en scène directement exploitable
+- si des références manuelles de scène sont fournies, elles sont obligatoires et doivent être reprises dans le prompt final
 - répondre en français
 - retourner uniquement un JSON valide
 
