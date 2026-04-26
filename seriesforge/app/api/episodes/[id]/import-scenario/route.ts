@@ -62,14 +62,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     await prisma.scene.deleteMany({ where: { episodeId: id } });
 
     // STEP 5: Generate prompts for each scene and save
-    const characters = series.characters.map(c => ({
+    const characters = series.characters.map((c: typeof series.characters[number]) => ({
       name: c.name,
       physicalDescription: c.physicalDescription,
       outfit: c.outfit,
       consistencyPrompt: c.consistencyPrompt,
     }));
 
-    const environments = series.environments.map(e => ({
+    const environments = series.environments.map((e: typeof series.environments[number]) => ({
       name: e.name,
       description: e.description,
     }));
