@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, use, useMemo } from "react";
+import { useState, useEffect, use, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import toast from "react-hot-toast";
@@ -19,6 +19,9 @@ import {
   MapPin,
   Mic,
   X,
+  Upload,
+  Sparkles,
+  Trash2,
 } from "lucide-react";
 import { IMAGE_GENERATORS } from "@/lib/generators";
 
@@ -33,6 +36,9 @@ interface CharacterRef {
   name: string;
   referenceImageUrl?: string | null;
   visualDNA?: string | null;
+  faceReferenceImages?: string[] | null;
+  fullBodyReferenceImages?: string[] | null;
+  outfitReferenceImages?: string[] | null;
 }
 
 interface EnvironmentRef {
@@ -60,6 +66,35 @@ interface Scene {
   qualityScore?: number;
   status: string;
   validatedByUser: boolean;
+  generationPayload?: {
+    promptImage: string;
+    promptVideo: string;
+    negativePrompt: string;
+    referenceImages: Array<{
+      type: "face" | "full_body" | "outfit" | "environment" | "pose";
+      characterId?: string;
+      url: string;
+      strength: number;
+    }>;
+    audio: {
+      activeSpeakerCharacterId?: string;
+      fileUrl?: string;
+      lipsync: boolean;
+    };
+  };
+  lipSyncShots?: Array<{
+    title: string;
+    dialogue: string;
+    narration: string;
+    activeSpeakerCharacterId?: string;
+    lipSyncRequired: boolean;
+    characters: Array<{ name: string }>;
+  }>;
+  consistency?: {
+    ok: boolean;
+    requiresAdminOverride: boolean;
+    issues: Array<{ level: "warning" | "error"; code: string; message: string }>;
+  };
 }
 
 interface EpisodePayload {
@@ -111,6 +146,9 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
   const [openPromptSceneId, setOpenPromptSceneId] = useState<string | null>(null);
   const [openHistorySceneId, setOpenHistorySceneId] = useState<string | null>(null);
   const [openGeneratorSceneId, setOpenGeneratorSceneId] = useState<string | null>(null);
+  const [optimizingPrompt, setOptimizingPrompt] = useState<{ sceneId: string; type: "image" | "video" } | null>(null);
+  const [uploadTarget, setUploadTarget] = useState<{ type: "character" | "environment"; id: string; referenceKind: "face" | "fullBody" | "outfit" | "environment" } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { fetchData(); }, [id]);
 
@@ -207,6 +245,115 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
     }
   }
 
+  async function optimizePrompt(scene: Scene, type: "image" | "video") {
+    setOptimizingPrompt({ sceneId: scene.id, type });
+    const t = toast.loading(`Agent IA: amélioration du prompt ${type === "image" ? "image" : "vidéo"}...`);
+    try {
+      const res = await fetch(`/api/scenes/${scene.id}/optimize-prompts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: type }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Optimisation impossible");
+      toast.dismiss(t);
+      toast.success(`Prompt ${type === "image" ? "image" : "vidéo"} amélioré`);
+      await fetchData();
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Optimisation impossible");
+    } finally {
+      setOptimizingPrompt(null);
+    }
+  }
+
+  async function handleReferenceUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file || !uploadTarget) return;
+
+    const t = toast.loading("Upload de la référence...");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", uploadTarget.type === "character" ? "characters" : "environments");
+      const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok) throw new Error(uploadData.error || "Upload impossible");
+
+      if (uploadTarget.type === "character") {
+        const character = characters.find((item) => item.id === uploadTarget.id);
+        const faceRefs = [...(character?.faceReferenceImages || [])];
+        const bodyRefs = [...(character?.fullBodyReferenceImages || [])];
+        const outfitRefs = [...(character?.outfitReferenceImages || [])];
+
+        if (uploadTarget.referenceKind === "face") faceRefs.push(uploadData.url);
+        if (uploadTarget.referenceKind === "fullBody") bodyRefs.push(uploadData.url);
+        if (uploadTarget.referenceKind === "outfit") outfitRefs.push(uploadData.url);
+
+        const patchBody: Record<string, unknown> = {
+          referenceImageUrl: uploadTarget.referenceKind === "face" ? uploadData.url : character?.referenceImageUrl || uploadData.url,
+          faceReferenceImages: faceRefs,
+          fullBodyReferenceImages: bodyRefs,
+          outfitReferenceImages: outfitRefs,
+        };
+        const saveRes = await fetch(`/api/characters/${uploadTarget.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patchBody),
+        });
+        const saveData = await saveRes.json();
+        if (!saveRes.ok) throw new Error(saveData.error || "Sauvegarde personnage impossible");
+      } else {
+        const env = environments.find((item) => item.id === uploadTarget.id);
+        const saveRes = await fetch(`/api/environments/${uploadTarget.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ previewImageUrl: uploadData.url, name: env?.name, description: "" }),
+        });
+        const saveData = await saveRes.json();
+        if (!saveRes.ok) throw new Error(saveData.error || "Sauvegarde décor impossible");
+      }
+
+      toast.dismiss(t);
+      toast.success("Référence ajoutée");
+      await fetchData();
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Upload impossible");
+    } finally {
+      setUploadTarget(null);
+      e.target.value = "";
+    }
+  }
+
+  async function removeCharacterReference(character: CharacterRef, referenceKind: "face" | "fullBody" | "outfit", url: string) {
+    const faceRefs = [...(character.faceReferenceImages || [])].filter((item) => item !== url);
+    const bodyRefs = [...(character.fullBodyReferenceImages || [])].filter((item) => item !== url);
+    const outfitRefs = [...(character.outfitReferenceImages || [])].filter((item) => item !== url);
+
+    const t = toast.loading("Suppression de la référence...");
+    try {
+      const res = await fetch(`/api/characters/${character.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          referenceImageUrl: referenceKind === "face" && character.referenceImageUrl === url ? faceRefs[0] || null : character.referenceImageUrl || null,
+          faceReferenceImages: faceRefs,
+          fullBodyReferenceImages: bodyRefs,
+          outfitReferenceImages: outfitRefs,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Suppression impossible");
+      toast.dismiss(t);
+      toast.success("Référence supprimée");
+      await fetchData();
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Suppression impossible");
+    }
+  }
+
   const promptScene = useMemo(
     () => scenes.find((scene) => scene.id === openPromptSceneId) || null,
     [openPromptSceneId, scenes]
@@ -219,6 +366,7 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
+      <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleReferenceUpload} />
       {promptScene && (
         <PromptModal
           scene={promptScene}
@@ -226,6 +374,13 @@ export default function StoryboardPage({ params }: { params: Promise<{ id: strin
           environment={getSceneEnvironment(promptScene)}
           onClose={() => setOpenPromptSceneId(null)}
           onCopy={copyText}
+          onOptimizePrompt={optimizePrompt}
+          optimizingPrompt={optimizingPrompt}
+          onUploadReference={(type, id, referenceKind) => {
+            setUploadTarget({ type, id, referenceKind });
+            fileInputRef.current?.click();
+          }}
+          onRemoveCharacterReference={removeCharacterReference}
         />
       )}
 
@@ -459,14 +614,24 @@ function PromptModal({
   environment,
   onClose,
   onCopy,
+  onOptimizePrompt,
+  optimizingPrompt,
+  onUploadReference,
+  onRemoveCharacterReference,
 }: {
   scene: Scene;
   characters: CharacterRef[];
   environment?: EnvironmentRef;
   onClose: () => void;
   onCopy: (text: string) => void;
+  onOptimizePrompt: (scene: Scene, type: "image" | "video") => Promise<void>;
+  optimizingPrompt: { sceneId: string; type: "image" | "video" } | null;
+  onUploadReference: (type: "character" | "environment", id: string, referenceKind: "face" | "fullBody" | "outfit" | "environment") => void;
+  onRemoveCharacterReference: (character: CharacterRef, referenceKind: "face" | "fullBody" | "outfit", url: string) => Promise<void>;
 }) {
   const characterNames = parseJsonArray(scene.charactersJson);
+  const payloadReferences = scene.generationPayload?.referenceImages || [];
+  const preflightIssues = scene.consistency?.issues || [];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
@@ -484,19 +649,53 @@ function PromptModal({
           <div className="border-r border-[#2a2a3e] p-5 overflow-y-auto space-y-5">
             <div>
               <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Références personnages</p>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3">
                 {characters.map((char) => (
-                  <div key={char.id} className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] overflow-hidden">
-                    <div className="aspect-square bg-[#11111a] flex items-center justify-center overflow-hidden">
-                      {char.referenceImageUrl ? (
-                        <img src={char.referenceImageUrl} alt={char.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <Users className="w-6 h-6 text-gray-600" />
-                      )}
+                  <div key={char.id} className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] p-3">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p className="text-sm font-medium text-white truncate">{char.name}</p>
+                      <button
+                        onClick={() => onUploadReference("character", char.id, "face")}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-600/20 border border-blue-600/30 text-blue-300 text-xs"
+                      >
+                        <Upload className="w-3 h-3" /> visage
+                      </button>
                     </div>
-                    <div className="p-2">
-                      <p className="text-xs font-medium text-white truncate">{char.name}</p>
-                      <p className="text-[11px] text-gray-500">{char.visualDNA ? "ADN visuel" : "sans ADN"}</p>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { kind: "face" as const, label: "Visage", values: char.faceReferenceImages?.length ? char.faceReferenceImages : char.referenceImageUrl ? [char.referenceImageUrl] : [] },
+                        { kind: "fullBody" as const, label: "Corps", values: char.fullBodyReferenceImages || [] },
+                        { kind: "outfit" as const, label: "Tenue", values: char.outfitReferenceImages || [] },
+                      ].map((group) => (
+                        <div key={group.label}>
+                          <div className="flex items-center justify-between mb-1">
+                            <p className="text-[11px] uppercase text-gray-500">{group.label}</p>
+                            <button
+                              onClick={() => onUploadReference("character", char.id, group.kind)}
+                              className="text-[11px] text-purple-300 hover:text-purple-200"
+                            >
+                              +
+                            </button>
+                          </div>
+                          <div className="space-y-1">
+                            {group.values.length > 0 ? group.values.map((url, index) => (
+                              <div key={`${group.kind}-${index}`} className="relative rounded-lg overflow-hidden border border-[#2a2a3e]">
+                                <img src={url} alt={`${char.name}-${group.kind}-${index}`} className="w-full aspect-square object-cover" />
+                                <button
+                                  onClick={() => onRemoveCharacterReference(char, group.kind, url)}
+                                  className="absolute top-1 right-1 p-1 rounded-full bg-black/70 text-white hover:bg-red-600"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )) : (
+                              <div className="aspect-square rounded-lg border border-dashed border-[#2a2a3e] flex items-center justify-center text-gray-600 text-xs">
+                                vide
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
@@ -517,7 +716,17 @@ function PromptModal({
                   )}
                 </div>
                 <div className="p-3">
-                  <p className="text-sm font-medium text-white">{environment?.name || scene.location || "Décor"}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-white">{environment?.name || scene.location || "Décor"}</p>
+                    {environment?.id && (
+                      <button
+                        onClick={() => onUploadReference("environment", environment.id, "environment")}
+                        className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-600/20 border border-blue-600/30 text-blue-300 text-xs"
+                      >
+                        <Upload className="w-3 h-3" /> décor
+                      </button>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-500 mt-1">Ajoutez ici aussi un totem, un accessoire ou un visuel de props quand nécessaire.</p>
                 </div>
               </div>
@@ -546,11 +755,20 @@ function PromptModal({
                 <p className="text-xs uppercase tracking-wide text-gray-500">Prompt image</p>
                 <p className="text-sm text-gray-400 mt-1">Sans texte dans l’image, avec mise en scène propre et cohérence des références.</p>
               </div>
-              {scene.imagePrompt && (
-                <button onClick={() => onCopy(scene.imagePrompt!)} className="px-3 py-2 bg-blue-600/20 border border-blue-600/30 text-blue-300 text-sm rounded-xl">
-                  Copier
+              <div className="flex gap-2">
+                {scene.imagePrompt && (
+                  <button onClick={() => onCopy(scene.imagePrompt!)} className="px-3 py-2 bg-blue-600/20 border border-blue-600/30 text-blue-300 text-sm rounded-xl">
+                    Copier
+                  </button>
+                )}
+                <button
+                  onClick={() => onOptimizePrompt(scene, "image")}
+                  className="px-3 py-2 bg-purple-600/20 border border-purple-600/30 text-purple-300 text-sm rounded-xl inline-flex items-center gap-2"
+                >
+                  {optimizingPrompt?.sceneId === scene.id && optimizingPrompt.type === "image" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  Agent IA image
                 </button>
-              )}
+              </div>
             </div>
             <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] p-4">
               <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
@@ -563,17 +781,48 @@ function PromptModal({
                 <p className="text-xs uppercase tracking-wide text-gray-500">Prompt vidéo / mise en scène</p>
                 <p className="text-sm text-gray-400 mt-1">Inclut désormais les règles de dialogue, voix off, active speaker et lipsync.</p>
               </div>
-              {scene.videoPrompt && (
-                <button onClick={() => onCopy(scene.videoPrompt!)} className="px-3 py-2 bg-purple-600/20 border border-purple-600/30 text-purple-300 text-sm rounded-xl">
-                  Copier
+              <div className="flex gap-2">
+                {scene.videoPrompt && (
+                  <button onClick={() => onCopy(scene.videoPrompt!)} className="px-3 py-2 bg-purple-600/20 border border-purple-600/30 text-purple-300 text-sm rounded-xl">
+                    Copier
+                  </button>
+                )}
+                <button
+                  onClick={() => onOptimizePrompt(scene, "video")}
+                  className="px-3 py-2 bg-orange-600/20 border border-orange-600/30 text-orange-300 text-sm rounded-xl inline-flex items-center gap-2"
+                >
+                  {optimizingPrompt?.sceneId === scene.id && optimizingPrompt.type === "video" ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                  Agent IA vidéo
                 </button>
-              )}
+              </div>
             </div>
             <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] p-4">
               <p className="text-sm text-gray-300 whitespace-pre-wrap leading-relaxed">
                 {scene.videoPrompt || "Aucun prompt vidéo."}
               </p>
             </div>
+
+            <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] p-4">
+              <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Prompt négatif</p>
+              <p className="text-sm text-gray-300 whitespace-pre-wrap">{scene.generationPayload?.negativePrompt || "Aucun prompt négatif."}</p>
+            </div>
+
+            {payloadReferences.length > 0 && (
+              <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Images réellement envoyées au générateur</p>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {payloadReferences.map((reference, index) => (
+                    <div key={`${reference.url}-${index}`} className="rounded-lg overflow-hidden border border-[#2a2a3e] bg-[#13131a]">
+                      <img src={reference.url} alt={`${reference.type}-${index}`} className="w-full aspect-square object-cover" />
+                      <div className="p-2">
+                        <p className="text-[11px] uppercase text-purple-300">{reference.type}</p>
+                        <p className="text-[11px] text-gray-500">strength {reference.strength}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] p-4">
@@ -596,6 +845,35 @@ function PromptModal({
                 Le système prépare maintenant le plan comme Vidmuse: décor + personnage(s) + éventuel accessoire/prop + audio lipsync si la scène parle.
               </p>
             </div>
+
+            <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] p-4">
+              <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Preflight check</p>
+              {preflightIssues.length > 0 ? (
+                <ul className="space-y-2">
+                  {preflightIssues.map((issue, index) => (
+                    <li key={`${issue.code}-${index}`} className={`text-sm ${issue.level === "error" ? "text-red-300" : "text-orange-300"}`}>
+                      {issue.level === "error" ? "⛔" : "⚠️"} {issue.message}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-green-300">✅ Préflight OK — scène prête à être améliorée puis générée.</p>
+              )}
+            </div>
+
+            {scene.lipSyncShots && scene.lipSyncShots.length > 0 && (
+              <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] p-4">
+                <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">Proposition de shots vidéo</p>
+                <div className="space-y-2">
+                  {scene.lipSyncShots.map((shot, index) => (
+                    <div key={`${shot.title}-${index}`} className="rounded-lg border border-[#2a2a3e] bg-[#13131a] p-3">
+                      <p className="text-sm text-white font-medium">{shot.title}</p>
+                      <p className="text-xs text-gray-400 mt-1">{shot.dialogue || shot.narration || "Shot visuel"}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

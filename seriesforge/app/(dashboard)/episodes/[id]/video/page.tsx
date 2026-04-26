@@ -295,168 +295,147 @@ export default function VideoPage({ params }: { params: Promise<{ id: string }> 
           </Link>
         </div>
       ) : (
-        <div className="space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {episode.scenes.map(scene => {
             const isGenerating = generatingScene === scene.id;
-            const isExpanded = expandedScene === scene.id;
             const hasVideo = !!scene.videoUrl;
             const hasVoice = !!scene.voiceUrl;
             const hasImage = !!scene.imageUrl;
 
             return (
-              <div key={scene.id} className={`bg-[#13131a] border rounded-xl overflow-hidden ${hasVideo ? "border-green-500/30" : "border-[#2a2a3e]"}`}>
-                {/* Scene Header */}
-                <div className="flex items-center gap-4 p-4">
-                  {/* Scene number */}
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${hasVideo ? "bg-green-600/20 border border-green-500/40 text-green-400" : "bg-[#1e1e2e] border border-[#2a2a3e] text-gray-400"}`}>
-                    {scene.sceneNumber}
-                  </div>
-
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-white font-medium text-sm truncate">
-                      {scene.location || `Scène ${scene.sceneNumber}`}
-                      {scene.timecode && <span className="text-gray-500 ml-2 text-xs">{scene.timecode}</span>}
-                    </p>
-                    {scene.action && <p className="text-xs text-gray-500 truncate mt-0.5">{scene.action}</p>}
-                    {/* Status indicators */}
-                    <div className="flex gap-2 mt-1">
-                      <span className={`text-xs flex items-center gap-0.5 ${hasImage ? "text-blue-400" : "text-gray-600"}`}><Image className="w-3 h-3" />{hasImage ? "Image" : "Pas d'image"}</span>
-                      <span className={`text-xs flex items-center gap-0.5 ${hasVoice ? "text-orange-400" : "text-gray-600"}`}><Mic className="w-3 h-3" />{hasVoice ? "Voix" : "Pas de voix"}</span>
-                      <span className={`text-xs flex items-center gap-0.5 ${hasVideo ? "text-green-400" : "text-gray-600"}`}><Video className="w-3 h-3" />{hasVideo ? "Vidéo ✅" : "Pas de vidéo"}</span>
+              <div key={scene.id} className={`bg-[#13131a] border rounded-2xl overflow-hidden ${hasVideo ? "border-green-500/30" : "border-[#2a2a3e]"}`}>
+                <div className="aspect-[9/16] bg-[#1e1e2e] relative overflow-hidden flex items-center justify-center">
+                  {scene.videoUrl ? (
+                    <video
+                      controls
+                      src={scene.videoUrl}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : scene.imageUrl ? (
+                    <img src={scene.imageUrl} alt={`Scène ${scene.sceneNumber}`} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="text-center p-4">
+                      <Video className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                      <p className="text-xs text-gray-500">Aucune vidéo générée</p>
                     </div>
+                  )}
+
+                  <div className="absolute top-2 left-2 flex items-center gap-2 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-black/70 text-white">
+                      Scène {scene.sceneNumber}
+                    </span>
+                    {scene.qualityScore && (
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${scene.qualityScore >= 85 ? "bg-green-900/80 text-green-300" : "bg-yellow-900/80 text-yellow-300"}`}>
+                        {scene.qualityScore}
+                      </span>
+                    )}
                   </div>
 
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="absolute top-2 right-2 flex gap-2">
+                    {hasVideo && (
+                      <button
+                        onClick={() => downloadVideo(scene.videoUrl!, scene.sceneNumber)}
+                        className="px-2 py-1 bg-black/70 hover:bg-black/90 text-white text-xs rounded-lg border border-white/10 flex items-center gap-1"
+                      >
+                        <Download className="w-3 h-3" /> MP4
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <div className="p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">
+                        {scene.location || `Scène ${scene.sceneNumber}`}
+                      </p>
+                      {scene.timecode && <p className="text-xs text-gray-500 mt-0.5">{scene.timecode}</p>}
+                      {scene.action && <p className="text-xs text-gray-400 mt-1 line-clamp-2">{scene.action}</p>}
+                    </div>
                     <button
-                      onClick={() => setExpandedScene(isExpanded ? null : scene.id)}
+                      onClick={() => setExpandedScene(expandedScene === scene.id ? null : scene.id)}
                       className="p-1.5 bg-[#1e1e2e] hover:bg-[#2a2a3e] border border-[#2a2a3e] rounded-lg transition-all"
                     >
-                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                      <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${expandedScene === scene.id ? "rotate-180" : ""}`} />
                     </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <span className={`text-xs flex items-center gap-1 px-2 py-1 rounded-full border ${hasImage ? "text-blue-400 border-blue-600/30 bg-blue-600/10" : "text-gray-600 border-[#2a2a3e] bg-[#1e1e2e]"}`}>
+                      <Image className="w-3 h-3" /> {hasImage ? "Image prête" : "Pas d'image"}
+                    </span>
+                    <span className={`text-xs flex items-center gap-1 px-2 py-1 rounded-full border ${hasVoice ? "text-orange-400 border-orange-600/30 bg-orange-600/10" : "text-gray-600 border-[#2a2a3e] bg-[#1e1e2e]"}`}>
+                      <Mic className="w-3 h-3" /> {hasVoice ? "Voix prête" : "Pas de voix"}
+                    </span>
+                    <span className={`text-xs flex items-center gap-1 px-2 py-1 rounded-full border ${hasVideo ? "text-green-400 border-green-600/30 bg-green-600/10" : "text-gray-600 border-[#2a2a3e] bg-[#1e1e2e]"}`}>
+                      <Video className="w-3 h-3" /> {hasVideo ? "Vidéo générée" : "À générer"}
+                    </span>
+                  </div>
+
+                  {scene.voiceUrl && (
+                    <audio controls src={scene.voiceUrl} className="w-full h-9" />
+                  )}
+
+                  <div className="flex flex-wrap gap-2">
                     <button
                       onClick={() => generateSceneVideo(scene)}
                       disabled={isGenerating || generatingAll || !scene.videoPrompt}
                       title={!scene.videoPrompt ? "Lancez d'abord le pipeline" : "Générer la vidéo"}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600/20 hover:bg-green-600/40 disabled:opacity-40 disabled:cursor-not-allowed border border-green-600/30 text-green-300 text-xs font-medium rounded-lg transition-all"
+                      className="flex-1 min-w-[140px] flex items-center justify-center gap-2 px-3 py-2.5 bg-green-600 hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl transition-all"
                     >
-                      {isGenerating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+                      {isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
                       {isGenerating ? "Génération..." : hasVideo ? "Regénérer" : "Générer"}
                     </button>
+                    {scene.videoPrompt && (
+                      <button
+                        onClick={() => copyPrompt(scene.videoPrompt!)}
+                        className="flex items-center justify-center gap-2 px-3 py-2.5 bg-[#1e1e2e] border border-[#2a2a3e] hover:border-purple-500/50 text-gray-300 text-sm rounded-xl transition-all"
+                      >
+                        <Copy className="w-4 h-4" /> Prompt
+                      </button>
+                    )}
                   </div>
-                </div>
 
-                {/* Expanded Detail */}
-                {isExpanded && (
-                  <div className="border-t border-[#2a2a3e] p-4 space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      {/* Left: storyboard image */}
-                      <div>
-                        {scene.imageUrl ? (
-                          <div className="aspect-[9/16] bg-[#1e1e2e] rounded-xl overflow-hidden border border-[#2a2a3e]">
-                            <img src={scene.imageUrl} alt={`Scene ${scene.sceneNumber}`} className="w-full h-full object-cover" />
-                          </div>
-                        ) : (
-                          <div className="aspect-[9/16] bg-[#1e1e2e] border border-dashed border-[#2a2a3e] rounded-xl flex items-center justify-center">
-                            <div className="text-center">
-                              <Image className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-                              <p className="text-xs text-gray-500">Pas d'image</p>
-                              <Link href={`/episodes/${id}/storyboard`} className="text-xs text-blue-400 hover:text-blue-300 mt-1 block">Générer storyboard →</Link>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Right: video + info */}
-                      <div className="space-y-3">
-                        {/* Video player */}
-                        {scene.videoUrl ? (
-                          <div>
-                            <div className="flex items-center justify-between mb-1">
-                              <p className="text-xs text-gray-500 uppercase tracking-wide">Vidéo générée</p>
-                              <button onClick={() => downloadVideo(scene.videoUrl!, scene.sceneNumber)} className="flex items-center gap-1 text-xs text-green-400 hover:text-green-300">
-                                <Download className="w-3 h-3" /> Télécharger
-                              </button>
-                            </div>
-                            <video
-                              controls
-                              src={scene.videoUrl}
-                              className="w-full rounded-xl border border-green-500/20"
-                              style={{ maxHeight: "300px" }}
-                            />
-                          </div>
-                        ) : (
-                          <div className="bg-[#1e1e2e] border border-dashed border-[#2a2a3e] rounded-xl p-4 text-center">
-                            <Video className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-                            <p className="text-xs text-gray-500">Cliquez "Générer" pour créer la vidéo</p>
-                            <CostBadge cost={(duration <= 5 ? currentGen?.pricePer5s : currentGen?.pricePer10s) || 0.35} label={`${duration}s`} className="mt-2" />
-                          </div>
-                        )}
-
-                        {/* Voice */}
-                        {scene.voiceUrl && (
-                          <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1 flex items-center gap-1"><Mic className="w-3 h-3" /> Voix générée</p>
-                            <audio controls src={scene.voiceUrl} className="w-full h-8" />
-                          </div>
-                        )}
-
-                        {/* Dialogue */}
-                        {scene.dialogue && (
-                          <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Dialogues</p>
-                            <div className="bg-purple-900/10 border border-purple-600/20 rounded-lg p-2">
-                              <p className="text-xs text-purple-200 whitespace-pre-line">{scene.dialogue}</p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Narration */}
-                        {scene.narration && (
-                          <div>
-                            <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Narration</p>
-                            <div className="bg-blue-900/10 border border-blue-600/20 rounded-lg p-2">
-                              <p className="text-xs text-blue-200 italic">&ldquo;{scene.narration}&rdquo;</p>
-                            </div>
-                          </div>
-                        )}
-
-                        {/* Video prompt */}
-                        {scene.videoPrompt && (
-                          <details>
-                            <summary className="text-xs text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-300 flex items-center justify-between list-none">
-                              Prompt vidéo
-                              <button onClick={() => copyPrompt(scene.videoPrompt!)} className="text-purple-400 hover:text-purple-300 flex items-center gap-0.5">
-                                <Copy className="w-3 h-3" /> Copier
-                              </button>
-                            </summary>
-                            <div className="mt-1 bg-[#1e1e2e] border border-[#2a2a3e] rounded-lg p-2">
-                              <p className="text-xs text-gray-400 whitespace-pre-wrap">{scene.videoPrompt}</p>
-                            </div>
-                          </details>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Links to other video generators */}
-                    <div>
-                      <p className="text-xs text-gray-500 mb-2">Utiliser le prompt sur d'autres plateformes :</p>
+                  {expandedScene === scene.id && (
+                    <div className="pt-3 border-t border-[#2a2a3e] space-y-3">
+                      {scene.dialogue && (
+                        <div className="bg-purple-900/10 border border-purple-600/20 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Dialogue</p>
+                          <p className="text-sm text-purple-200 whitespace-pre-line">{scene.dialogue}</p>
+                        </div>
+                      )}
+                      {scene.narration && (
+                        <div className="bg-blue-900/10 border border-blue-600/20 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Narration</p>
+                          <p className="text-sm text-blue-200 italic">&ldquo;{scene.narration}&rdquo;</p>
+                        </div>
+                      )}
+                      {scene.videoPrompt && (
+                        <div className="bg-[#1e1e2e] border border-[#2a2a3e] rounded-lg p-3">
+                          <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Prompt vidéo</p>
+                          <p className="text-xs text-gray-400 whitespace-pre-wrap">{scene.videoPrompt}</p>
+                        </div>
+                      )}
                       <div className="flex gap-2 flex-wrap">
                         {[
                           { name: "Kling AI", url: "https://klingai.com" },
                           { name: "Runway", url: "https://runwayml.com" },
                           { name: "Luma Dream", url: "https://lumalabs.ai" },
                         ].map(p => (
-                          <a key={p.name} href={p.url} target="_blank" rel="noreferrer"
-                            className="flex items-center gap-1 px-2 py-1 bg-[#1e1e2e] border border-[#2a2a3e] hover:border-gray-400 text-gray-400 hover:text-white text-xs rounded-lg transition-all">
+                          <a
+                            key={p.name}
+                            href={p.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1 px-2 py-1 bg-[#1e1e2e] border border-[#2a2a3e] hover:border-gray-400 text-gray-400 hover:text-white text-xs rounded-lg transition-all"
+                          >
                             {p.name} <ExternalLink className="w-3 h-3" />
                           </a>
                         ))}
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             );
           })}
