@@ -1,0 +1,49 @@
+name: seriesforge-deploy-guardrails
+
+on:
+  push:
+    paths:
+      - "seriesforge/**"
+      - ".github/workflows/seriesforge-deploy-guardrails.yml"
+  pull_request:
+    paths:
+      - "seriesforge/**"
+      - ".github/workflows/seriesforge-deploy-guardrails.yml"
+
+jobs:
+  build-check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: seriesforge
+    env:
+      DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/placeholder
+      JWT_SECRET: seriesforge-secret
+      OPENAI_API_KEY: test-openai-key
+      HEYGEN_API_KEY: test-heygen-key
+      ELEVENLABS_API_KEY: test-elevenlabs-key
+      FAL_API_KEY: test-fal-key
+      NANOBANA_API_KEY: test-nanobana-key
+      REPLICATE_API_TOKEN: test-replicate-token
+      TOGETHER_API_KEY: test-together-key
+      HUGGINGFACE_API_KEY: test-huggingface-key
+      STABILITY_API_KEY: test-stability-key
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: seriesforge/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Production build guardrail
+        run: npm run build:ci

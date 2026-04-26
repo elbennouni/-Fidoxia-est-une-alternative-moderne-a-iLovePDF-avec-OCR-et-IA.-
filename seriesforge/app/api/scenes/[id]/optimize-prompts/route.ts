@@ -50,7 +50,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const optimized = await optimizeScenePrompts({
       sceneNumber: scene.sceneNumber,
-      title: scene.title || `Scène ${scene.sceneNumber}`,
+      title: scene.location || `Scène ${scene.sceneNumber}`,
       location: scene.location,
       action: body.userInstruction
         ? `${scene.action || ""}\nInstruction utilisateur: ${body.userInstruction}`.trim()
