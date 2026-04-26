@@ -771,7 +771,7 @@ function PromptModal({
           </button>
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-[340px_1fr] max-h-[calc(90vh-84px)]">
-          <div className="border-r border-[#2a2a3e] p-5 overflow-y-auto space-y-5 max-h-[calc(90vh-84px)] pr-3 scrollbar-thin">
+          <div className="border-r border-[#2a2a3e] p-5 overflow-y-scroll space-y-5 max-h-[calc(90vh-84px)] pr-3 scrollbar-thin [scrollbar-color:#4b5563_#13131a]">
             <div>
               <div className="rounded-xl border border-[#2a2a3e] bg-[#1e1e2e] p-3">
                 <div className="flex items-center justify-between gap-3 mb-2">
@@ -817,7 +817,7 @@ function PromptModal({
                     Les références manuelles actuelles ont déjà été prises en compte dans le prompt.
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-2 mt-3 max-h-[260px] overflow-y-auto pr-1 scrollbar-thin">
+                <div className="grid grid-cols-2 gap-2 mt-3 max-h-[260px] overflow-y-scroll pr-1 scrollbar-thin [scrollbar-color:#4b5563_#13131a]">
                   {sceneReferences.length > 0 ? sceneReferences.map((reference) => (
                     <div key={reference.id} className="relative rounded-lg overflow-hidden border border-[#2a2a3e] bg-[#13131a]">
                       {reference.url ? (
@@ -952,7 +952,7 @@ function PromptModal({
             )}
           </div>
 
-          <div className="p-5 overflow-y-auto space-y-4">
+          <div className="p-5 overflow-y-scroll space-y-4 max-h-[calc(90vh-84px)] pr-3 scrollbar-thin [scrollbar-color:#4b5563_#13131a]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-wide text-gray-500">Prompt image</p>

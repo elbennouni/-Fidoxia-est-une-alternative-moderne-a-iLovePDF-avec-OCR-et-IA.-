@@ -125,11 +125,14 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
   const [voiceCatalogNote, setVoiceCatalogNote] = useState("");
   const [showVoicePanel, setShowVoicePanel] = useState<string | null>(null);
   const [pendingUploadCharId, setPendingUploadCharId] = useState<string | null>(null);
+  const [pendingGroupUploadId, setPendingGroupUploadId] = useState<string | null>(null);
+  const [uploadingGroupImage, setUploadingGroupImage] = useState<string | null>(null);
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
   const [generatingDNA, setGeneratingDNA] = useState<string | null>(null);
   const [expandedDNA, setExpandedDNA] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const groupFileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({ name: "", physicalDescription: "", outfit: "", personality: "", voiceProfile: "" });
   const [groupForm, setGroupForm] = useState({
     id: "",
@@ -366,6 +369,55 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
     }
   }
 
+  async function handleExistingGroupImageUpload(e: React.ChangeEvent<HTMLInputElement>, groupId: string) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingGroupImage(groupId);
+    const t = toast.loading("Upload image groupe...");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", "groups");
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Upload groupe impossible");
+
+      const patchRes = await fetch(`/api/assets/${groupId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ url: data.url }),
+      });
+      const patchData = await patchRes.json();
+      if (!patchRes.ok) throw new Error(patchData.error || "Mise a jour groupe impossible");
+
+      toast.dismiss(t);
+      toast.success("Image de groupe mise a jour");
+      fetchData();
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Erreur upload groupe");
+    } finally {
+      setUploadingGroupImage(null);
+      setPendingGroupUploadId(null);
+      e.target.value = "";
+    }
+  }
+
+  async function handleDeleteGroup(groupId: string) {
+    const t = toast.loading("Suppression du groupe...");
+    try {
+      const res = await fetch(`/api/assets/${groupId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Suppression groupe impossible");
+      toast.dismiss(t);
+      toast.success("Groupe supprime");
+      fetchData();
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Erreur suppression groupe");
+    }
+  }
+
   async function saveGroup(e: React.FormEvent) {
     e.preventDefault();
     if (!groupForm.name.trim()) {
@@ -416,6 +468,7 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => pendingUploadCharId && handleFileUpload(e, pendingUploadCharId)} />
+      <input ref={groupFileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => pendingGroupUploadId && handleExistingGroupImageUpload(e, pendingGroupUploadId)} />
 
       <div className="mb-6">
         <Link href={`/series/${seriesId}`} className="flex items-center gap-2 text-gray-400 hover:text-white text-sm mb-4 transition-colors w-fit">
@@ -639,12 +692,32 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                 {characterGroups.map((group) => (
                   <div key={group.id} className="bg-[#13131a] border border-[#2a2a3e] rounded-xl overflow-hidden">
-                    <div className="aspect-video bg-[#1e1e2e] flex items-center justify-center overflow-hidden">
+                    <div className="relative aspect-video bg-[#1e1e2e] flex items-center justify-center overflow-hidden">
                       {group.url ? (
                         <img src={group.url} alt={group.name} className="w-full h-full object-cover" />
                       ) : (
                         <Users className="w-8 h-8 text-gray-600" />
                       )}
+                      <div className="absolute bottom-2 left-2 right-2 flex gap-2">
+                        <button
+                          onClick={() => {
+                            setPendingGroupUploadId(group.id);
+                            groupFileInputRef.current?.click();
+                          }}
+                          disabled={uploadingGroupImage === group.id}
+                          className="flex-1 flex items-center justify-center gap-1 py-1.5 bg-blue-600/90 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-medium rounded-lg backdrop-blur-sm transition-all"
+                        >
+                          {uploadingGroupImage === group.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
+                          {group.url ? "Remplacer image" : "Uploader image"}
+                        </button>
+                        <button
+                          onClick={() => handleDeleteGroup(group.id)}
+                          className="flex items-center justify-center gap-1 px-3 py-1.5 bg-red-600/90 hover:bg-red-700 text-white text-xs font-medium rounded-lg backdrop-blur-sm transition-all"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          Supprimer
+                        </button>
+                      </div>
                     </div>
                     <div className="p-4">
                       <div className="flex items-center justify-between gap-2">
