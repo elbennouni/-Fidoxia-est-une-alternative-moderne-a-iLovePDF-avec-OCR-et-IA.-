@@ -13,6 +13,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { tryEnsureDurableImageUrl } from "@/lib/storage/durableImages";
+import { resolveSceneCharacterReferences } from "@/lib/imageWorkflows/nanoBanana";
 
 const NANOBANA_BASE = "https://nanophoto.ai/api/nano-banana-pro";
 
@@ -100,28 +101,19 @@ export async function POST(req: NextRequest) {
     const presentChars = series.characters.filter((c: typeof series.characters[number]) =>
       sceneCharNames.some((sc: string) => sc.toLowerCase().includes(c.name.toLowerCase()))
     );
-    const charsWithPhoto = presentChars.filter((c: typeof presentChars[number]) => c.referenceImageUrl);
 
-    // Upload all reference photos to get public URLs
-    const inputImageUrls: string[] = [];
-    const uploadedChars: string[] = [];
+    const resolvedReferences = await resolveSceneCharacterReferences({
+      presentChars,
+      maxImages: 7,
+    });
+    const inputImageUrls = [...resolvedReferences.inputImageUrls];
+    const uploadedChars = resolvedReferences.uploadedChars;
+    const rawReadableChars = resolvedReferences.assignedButInvalid;
+    const missingCharacterRefs = [...resolvedReferences.missingRefs];
 
-    for (const char of charsWithPhoto) {
-      if (inputImageUrls.length >= 7) break; // keep 1 slot for environment
-      const url = await getPublicUrl(char.referenceImageUrl!);
-      if (url) {
-        inputImageUrls.push(url);
-        uploadedChars.push(char.name);
-      }
-    }
-
-    const missingCharacterRefs = presentChars
-      .filter((char: typeof presentChars[number]) => !uploadedChars.includes(char.name))
-      .map((char: typeof presentChars[number]) => char.name);
-
-    if (presentChars.length > 1 && uploadedChars.length < presentChars.length) {
+    if (presentChars.length > 1 && uploadedChars.length + rawReadableChars.length < presentChars.length) {
       return NextResponse.json({
-        error: `Références insuffisantes pour une scène multi-personnages. Photos valides: ${uploadedChars.join(", ") || "aucune"} · manquantes: ${missingCharacterRefs.join(", ")}`,
+        error: `Références insuffisantes pour une scène multi-personnages. Photos valides: ${[...uploadedChars, ...rawReadableChars].join(", ") || "aucune"} · manquantes: ${missingCharacterRefs.join(", ")}`,
       }, { status: 400 });
     }
 
@@ -144,7 +136,9 @@ export async function POST(req: NextRequest) {
     // Character descriptions from DNA or text
     const charLines = presentChars.map((c: typeof presentChars[number]) => {
       const dna = c.visualDNA ? (() => { try { return JSON.parse(c.visualDNA!); } catch { return null; } })() : null;
-      const photoNote = charsWithPhoto.some((ch: typeof charsWithPhoto[number]) => ch.id === c.id) ? " [REPRODUCE EXACT FACE FROM REFERENCE PHOTO]" : "";
+      const photoNote = uploadedChars.includes(c.name) || rawReadableChars.includes(c.name)
+        ? " [REPRODUCE EXACT FACE FROM REFERENCE PHOTO]"
+        : "";
       if (dna?.lockedPrompt) return `${c.name}${photoNote}: ${dna.lockedPrompt}`;
       return `${c.name}${photoNote}: ${c.physicalDescription}. Outfit: ${c.outfit}.`;
     }).join("\n");
@@ -241,9 +235,9 @@ STYLE: ${series.visualStyle}, high quality animation render, vibrant colors, pro
       sceneId,
       generator: "Nano Banana Pro",
       mode,
-      referencesUploaded: uploadedChars,
+      referencesUploaded: [...uploadedChars, ...rawReadableChars],
       totalRefs: inputImageUrls.length,
-      charsWithoutPhoto: presentChars.filter((c: typeof presentChars[number]) => !charsWithPhoto.some((cp: typeof charsWithPhoto[number]) => cp.id === c.id)).map((c: typeof presentChars[number]) => c.name),
+      charsWithoutPhoto: missingCharacterRefs,
       charsMissingValidRef: missingCharacterRefs,
     });
 

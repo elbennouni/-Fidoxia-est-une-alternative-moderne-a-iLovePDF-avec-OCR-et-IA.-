@@ -10,6 +10,8 @@ type SceneCharacter = {
   outfit: string;
   visualDNA: string | null;
   referenceImageUrl: string | null;
+  faceReferenceImages?: unknown;
+  fullBodyReferenceImages?: unknown;
 };
 
 type SceneEnvironment = {
@@ -35,11 +37,119 @@ export interface NanoBananaResult {
 
 async function getPublicUrl(imageUrl: string): Promise<string | null> {
   if (!imageUrl) return null;
-  return tryEnsureDurableImageUrl(imageUrl, {
+  const durableUrl = await tryEnsureDurableImageUrl(imageUrl, {
     folder: "references",
     fileNamePrefix: `nano-ref-${Date.now()}`,
     forceRehostRemote: true,
   });
+  if (durableUrl) return durableUrl;
+
+  if (imageUrl.startsWith("https://") || imageUrl.startsWith("http://")) {
+    try {
+      const response = await fetch(imageUrl, { method: "GET" });
+      if (response.ok) return imageUrl;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function parseReferenceList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+      }
+    } catch {
+      return [value];
+    }
+  }
+
+  return [];
+}
+
+function collectCharacterReferenceCandidates(character: SceneCharacter): string[] {
+  const candidates = [
+    ...parseReferenceList(character.faceReferenceImages),
+    ...parseReferenceList(character.fullBodyReferenceImages),
+    ...(character.referenceImageUrl ? [character.referenceImageUrl] : []),
+  ];
+
+  return [...new Set(candidates.filter(Boolean))];
+}
+
+export async function resolveSceneCharacterReferences(params: {
+  presentChars: SceneCharacter[];
+  maxImages?: number;
+}): Promise<{
+  inputImageUrls: string[];
+  uploadedChars: string[];
+  assignedButInvalid: string[];
+  missingRefs: string[];
+}> {
+  const maxImages = params.maxImages ?? 7;
+  const inputImageUrls: string[] = [];
+  const uploadedChars: string[] = [];
+  const assignedButInvalid: string[] = [];
+  const missingRefs: string[] = [];
+
+  for (const char of params.presentChars) {
+    const candidates = collectCharacterReferenceCandidates(char);
+    if (candidates.length === 0) {
+      missingRefs.push(char.name);
+      continue;
+    }
+
+    let resolvedUrl: string | null = null;
+    for (const candidate of candidates) {
+      resolvedUrl = await getPublicUrl(candidate);
+      if (resolvedUrl) break;
+    }
+
+    if (!resolvedUrl) {
+      assignedButInvalid.push(char.name);
+      continue;
+    }
+
+    if (inputImageUrls.length < maxImages) {
+      inputImageUrls.push(resolvedUrl);
+    }
+    uploadedChars.push(char.name);
+  }
+
+  return {
+    inputImageUrls,
+    uploadedChars,
+    assignedButInvalid,
+    missingRefs,
+  };
+}
+
+export function buildMultiCharacterReferenceError(params: {
+  uploadedChars: string[];
+  assignedButInvalid: string[];
+  missingRefs: string[];
+}): string {
+  const parts = [
+    `Photos valides: ${params.uploadedChars.join(", ") || "aucune"}`,
+  ];
+
+  if (params.assignedButInvalid.length > 0) {
+    parts.push(`assignées mais illisibles: ${params.assignedButInvalid.join(", ")}`);
+  }
+
+  if (params.missingRefs.length > 0) {
+    parts.push(`manquantes: ${params.missingRefs.join(", ")}`);
+  }
+
+  return `Références insuffisantes pour une scène multi-personnages. ${parts.join(" · ")}`;
 }
 
 async function pollStatus(apiKey: string, generationId: string): Promise<string | null> {
@@ -108,28 +218,22 @@ export async function generateSceneWithNanoBanana(params: {
   const presentChars = series.characters.filter((c: SceneCharacter) =>
     sceneCharNames.some((sc: string) => sc.toLowerCase().includes(c.name.toLowerCase()))
   );
-  const charsWithPhoto = presentChars.filter((c: SceneCharacter) => c.referenceImageUrl);
-
-  const inputImageUrls: string[] = [];
-  const uploadedChars: string[] = [];
-
-  for (const char of charsWithPhoto) {
-    if (inputImageUrls.length >= 7) break;
-    const url = await getPublicUrl(char.referenceImageUrl!);
-    if (url) {
-      inputImageUrls.push(url);
-      uploadedChars.push(char.name);
-    }
-  }
-
-  const missingCharacterRefs = presentChars
-    .filter((char: SceneCharacter) => !uploadedChars.includes(char.name))
-    .map((char: SceneCharacter) => char.name);
+  const {
+    inputImageUrls,
+    uploadedChars,
+    assignedButInvalid,
+    missingRefs,
+  } = await resolveSceneCharacterReferences({
+    presentChars,
+    maxImages: 7,
+  });
 
   if (presentChars.length > 1 && uploadedChars.length < presentChars.length) {
-    throw new Error(
-      `Références insuffisantes pour une scène multi-personnages. Photos valides: ${uploadedChars.join(", ") || "aucune"} · manquantes: ${missingCharacterRefs.join(", ")}`
-    );
+    throw new Error(buildMultiCharacterReferenceError({
+      uploadedChars,
+      assignedButInvalid,
+      missingRefs,
+    }));
   }
 
   const matchedEnv = series.environments.find((e: SceneEnvironment) =>
@@ -148,7 +252,7 @@ export async function generateSceneWithNanoBanana(params: {
 
   const charLines = presentChars.map((char: SceneCharacter) => {
     const dna = char.visualDNA ? (() => { try { return JSON.parse(char.visualDNA!); } catch { return null; } })() : null;
-    const hasPhoto = charsWithPhoto.some((withPhoto: SceneCharacter) => withPhoto.id === char.id);
+    const hasPhoto = uploadedChars.includes(char.name);
     const photoNote = hasPhoto ? " [REPRODUCE EXACT FACE FROM REFERENCE PHOTO]" : "";
     if (dna?.lockedPrompt) return `${char.name}${photoNote}: ${dna.lockedPrompt}`;
     return `${char.name}${photoNote}: ${char.physicalDescription}. Outfit: ${char.outfit}.`;
@@ -245,9 +349,9 @@ STYLE: ${series.visualStyle}, high quality animation render, vibrant colors, pro
     totalRefs: inputImageUrls.length,
     environmentName: matchedEnv?.name,
     charsWithoutPhoto: presentChars
-      .filter((c: SceneCharacter) => !charsWithPhoto.some((cp: SceneCharacter) => cp.id === c.id))
+      .filter((c: SceneCharacter) => !uploadedChars.includes(c.name))
       .map((c: SceneCharacter) => c.name),
-    charsMissingValidRef: missingCharacterRefs,
+    charsMissingValidRef: [...assignedButInvalid, ...missingRefs],
     autoRouted,
   };
 }
@@ -272,21 +376,19 @@ export async function validateNanoBananaAutoRoute(params: {
 
   if (presentChars.length <= 1) return { ok: true };
 
-  const validRefs: string[] = [];
-  for (const char of presentChars) {
-    if (!char.referenceImageUrl) continue;
-    const url = await getPublicUrl(char.referenceImageUrl);
-    if (url) validRefs.push(char.name);
-  }
+  const { uploadedChars, assignedButInvalid, missingRefs } = await resolveSceneCharacterReferences({
+    presentChars,
+    maxImages: 7,
+  });
 
-  const missing = presentChars
-    .filter((char) => !validRefs.includes(char.name))
-    .map((char) => char.name);
-
-  if (missing.length > 0) {
+  if (uploadedChars.length < presentChars.length) {
     return {
       ok: false,
-      error: `Nano Banana nécessite une photo valide pour chaque personnage. Manquantes: ${missing.join(", ")}`,
+      error: buildMultiCharacterReferenceError({
+        uploadedChars,
+        assignedButInvalid,
+        missingRefs,
+      }),
     };
   }
 
