@@ -7,6 +7,7 @@ import toast from "react-hot-toast";
 import { ArrowLeft, Plus, Users, X, Loader2, ShieldCheck, Sparkles, Upload, Mic, FileJson, Trash2, AlertTriangle, Play, Square, Dna, ChevronDown, ChevronUp, Eye } from "lucide-react";
 import { CostBadge } from "@/components/ui/CostBadge";
 import { COSTS } from "@/lib/costs";
+import { CHARACTER_GROUP_ASSET_TYPE, type CharacterGroupAsset, type CharacterGroupMetadata, serializeCharacterGroupMetadata } from "@/lib/groups/characterGroups";
 
 interface VisualDNA {
   faceShape?: string;
@@ -41,6 +42,16 @@ interface Character {
 
 interface HeyGenVoice { voice_id: string; name: string; language: string; gender: string; }
 
+const GROUP_CATEGORIES = [
+  "Rouges",
+  "Jaunes",
+  "Famille",
+  "Travail",
+  "Équipe",
+  "Clan",
+  "Groupe",
+];
+
 const VOICE_PROFILES = ["Male, deep, authoritative","Male, young, energetic","Male, grumpy, older","Female, strong, confident","Female, soft, gentle","Female, energetic, cheerful","Child, playful","TV presenter, enthusiastic","Villain, menacing"];
 
 const EXAMPLE_CHARS_JSON = `{
@@ -66,11 +77,14 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
   const { id: seriesId } = use(params);
   const router = useRouter();
   const [characters, setCharacters] = useState<Character[]>([]);
+  const [characterGroups, setCharacterGroups] = useState<CharacterGroupAsset[]>([]);
   const [visualStyle, setVisualStyle] = useState("");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showGroupForm, setShowGroupForm] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [savingGroup, setSavingGroup] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importJson, setImportJson] = useState("");
   const [importJsonError, setImportJsonError] = useState("");
@@ -88,6 +102,15 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({ name: "", physicalDescription: "", outfit: "", personality: "", voiceProfile: "" });
+  const [groupForm, setGroupForm] = useState({
+    id: "",
+    name: "",
+    category: "Équipe",
+    description: "",
+    members: [] as string[],
+    keywords: "",
+    url: "",
+  });
 
   async function analyzePhoto(char: Character) {
     if (!char.referenceImageUrl) {
@@ -160,6 +183,7 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
       if (res.status === 401) { router.push("/login"); return; }
       const data = await res.json();
       setCharacters(data.characters || []);
+      setCharacterGroups(data.characterGroups || []);
       setVisualStyle(data.visualStyle || "");
     } finally { setLoading(false); }
     try {
@@ -271,6 +295,75 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
     } catch { toast.error("Erreur"); }
   }
 
+  async function handleGroupImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const t = toast.loading("Upload groupe...");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", "groups");
+      const res = await fetch("/api/upload", { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      setGroupForm((prev) => ({ ...prev, url: data.url }));
+      toast.dismiss(t);
+      toast.success("Image de groupe uploadée");
+    } catch (err) {
+      toast.dismiss(t);
+      toast.error(err instanceof Error ? err.message : "Erreur upload groupe");
+    } finally {
+      e.target.value = "";
+    }
+  }
+
+  async function saveGroup(e: React.FormEvent) {
+    e.preventDefault();
+    if (!groupForm.name.trim()) {
+      toast.error("Nom du groupe obligatoire");
+      return;
+    }
+    setSavingGroup(true);
+    try {
+      const metadata: CharacterGroupMetadata = {
+        category: groupForm.category,
+        description: groupForm.description,
+        members: groupForm.members,
+        keywords: groupForm.keywords.split(",").map((item) => item.trim()).filter(Boolean),
+      };
+      const res = await fetch("/api/assets/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seriesId,
+          type: CHARACTER_GROUP_ASSET_TYPE,
+          name: groupForm.name,
+          url: groupForm.url || undefined,
+          prompt: serializeCharacterGroupMetadata(metadata),
+          reusable: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Sauvegarde groupe impossible");
+      toast.success("Groupe sauvegardé");
+      setShowGroupForm(false);
+      setGroupForm({
+        id: "",
+        name: "",
+        category: "Équipe",
+        description: "",
+        members: [],
+        keywords: "",
+        url: "",
+      });
+      fetchData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erreur groupe");
+    } finally {
+      setSavingGroup(false);
+    }
+  }
+
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => pendingUploadCharId && handleFileUpload(e, pendingUploadCharId)} />
@@ -282,11 +375,14 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-3xl font-bold text-white flex items-center gap-3"><Users className="w-7 h-7 text-blue-400" /> Personnages</h1>
-            <p className="text-gray-400 mt-1">{characters.length} personnage{characters.length > 1 ? "s" : ""}</p>
+            <p className="text-gray-400 mt-1">{characters.length} personnage{characters.length > 1 ? "s" : ""} · {characterGroups.length} groupe{characterGroups.length > 1 ? "s" : ""}</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => setShowImport(true)} className="flex items-center gap-2 px-4 py-2.5 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-600/30 text-orange-300 font-medium rounded-xl transition-all">
               <FileJson className="w-4 h-4" /> Importer JSON
+            </button>
+            <button onClick={() => setShowGroupForm(true)} className="flex items-center gap-2 px-4 py-2.5 bg-blue-600/20 hover:bg-blue-600/40 border border-blue-600/30 text-blue-300 font-medium rounded-xl transition-all">
+              <Users className="w-4 h-4" /> Nouveau groupe
             </button>
             <button onClick={() => setShowForm(true)} className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-xl transition-all">
               <Plus className="w-4 h-4" /> Nouveau
@@ -294,6 +390,58 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
       </div>
+
+      {showGroupForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-[#13131a] border border-[#2a2a3e] rounded-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto scrollbar-thin">
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-xl font-bold text-white">Nouveau groupe / équipe / famille</h2>
+              <button onClick={() => setShowGroupForm(false)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <form onSubmit={saveGroup} className="space-y-4">
+              <div><label className="block text-sm text-gray-300 mb-1">Nom du groupe *</label><input value={groupForm.name} onChange={e => setGroupForm({ ...groupForm, name: e.target.value })} placeholder="Les Rouges" required className="w-full px-4 py-3 bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl text-white" /></div>
+              <div><label className="block text-sm text-gray-300 mb-1">Catégorie</label><select value={groupForm.category} onChange={e => setGroupForm({ ...groupForm, category: e.target.value })} className="w-full px-4 py-3 bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl text-white">{GROUP_CATEGORIES.map(category => <option key={category} value={category}>{category}</option>)}</select></div>
+              <div><label className="block text-sm text-gray-300 mb-1">Description</label><textarea value={groupForm.description} onChange={e => setGroupForm({ ...groupForm, description: e.target.value })} placeholder="Équipe rouge complète présentée autour de Dany" rows={3} className="w-full px-4 py-3 bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl text-white resize-none" /></div>
+              <div>
+                <label className="block text-sm text-gray-300 mb-1">Membres</label>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                  {characters.map((character) => {
+                    const checked = groupForm.members.includes(character.name);
+                    return (
+                      <button
+                        key={character.id}
+                        type="button"
+                        onClick={() => setGroupForm((prev) => ({
+                          ...prev,
+                          members: checked
+                            ? prev.members.filter((name) => name !== character.name)
+                            : [...prev.members, character.name],
+                        }))}
+                        className={`px-3 py-2 rounded-xl border text-sm transition-all ${checked ? "bg-blue-600/20 border-blue-500 text-blue-200" : "bg-[#1e1e2e] border-[#2a2a3e] text-gray-400"}`}
+                      >
+                        {character.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div><label className="block text-sm text-gray-300 mb-1">Mots-clés (séparés par virgule)</label><input value={groupForm.keywords} onChange={e => setGroupForm({ ...groupForm, keywords: e.target.value })} placeholder="rouges, équipe rouge, tribu rouge" className="w-full px-4 py-3 bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl text-white" /></div>
+              <div>
+                <label className="block text-sm text-gray-300 mb-1">Image de groupe</label>
+                <input type="file" accept="image/*" onChange={handleGroupImageUpload} className="w-full px-4 py-3 bg-[#1e1e2e] border border-[#2a2a3e] rounded-xl text-white" />
+                {groupForm.url && <img src={groupForm.url} alt="group" className="mt-3 w-full max-h-56 object-cover rounded-xl border border-[#2a2a3e]" />}
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={() => setShowGroupForm(false)} className="flex-1 py-3 border border-[#2a2a3e] text-gray-400 rounded-xl">Annuler</button>
+                <button type="submit" disabled={savingGroup} className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl flex items-center justify-center gap-2">
+                  {savingGroup ? <Loader2 className="w-4 h-4 animate-spin" /> : <Users className="w-4 h-4" />}
+                  Sauvegarder le groupe
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Delete Confirm */}
       {deleteId && (
@@ -415,8 +563,45 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {characters.map(char => (
+        <div className="space-y-8">
+          {characterGroups.length > 0 && (
+            <section>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-xl font-bold text-white">Groupes / équipes / familles</h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                {characterGroups.map((group) => (
+                  <div key={group.id} className="bg-[#13131a] border border-[#2a2a3e] rounded-xl overflow-hidden">
+                    <div className="aspect-video bg-[#1e1e2e] flex items-center justify-center overflow-hidden">
+                      {group.url ? (
+                        <img src={group.url} alt={group.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <Users className="w-8 h-8 text-gray-600" />
+                      )}
+                    </div>
+                    <div className="p-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="font-semibold text-white">{group.name}</h3>
+                        <span className="text-xs px-2 py-0.5 bg-blue-600/20 border border-blue-600/30 rounded-full text-blue-300">{group.metadata.category}</span>
+                      </div>
+                      {group.metadata.description && <p className="text-sm text-gray-400 mt-2">{group.metadata.description}</p>}
+                      {group.metadata.members.length > 0 && (
+                        <p className="text-xs text-gray-500 mt-2">Membres: {group.metadata.members.join(", ")}</p>
+                      )}
+                      {group.metadata.keywords && group.metadata.keywords.length > 0 && (
+                        <p className="text-xs text-purple-400 mt-2">Mots-clés: {group.metadata.keywords.join(", ")}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          <section>
+            <h2 className="text-xl font-bold text-white mb-3">Personnages</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {characters.map(char => (
             <div key={char.id} className="bg-[#13131a] border border-[#2a2a3e] rounded-xl overflow-hidden card-hover group relative">
               {/* Delete button */}
               <button onClick={() => setDeleteId(char.id)} className="absolute top-2 right-2 z-10 p-1.5 bg-red-600/0 hover:bg-red-600/80 text-transparent hover:text-white rounded-lg transition-all group-hover:text-red-400 group-hover:bg-red-600/20">
@@ -541,7 +726,9 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
                 </div>
               </div>
             </div>
-          ))}
+              ))}
+            </div>
+          </section>
         </div>
       )}
     </div>

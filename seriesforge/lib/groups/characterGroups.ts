@@ -56,6 +56,9 @@ export function getCharacterGroupAssets(assets: RawAsset[]): CharacterGroupAsset
     }));
 }
 
+export const buildCharacterGroupAssets = getCharacterGroupAssets;
+export const parseCharacterGroups = getCharacterGroupAssets;
+
 export function serializeCharacterGroupMetadata(metadata: CharacterGroupMetadata): string {
   return JSON.stringify({
     category: metadata.category,

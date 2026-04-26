@@ -12,6 +12,7 @@ import path from "path";
 import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
 import { resolveSceneCharacterReferences } from "@/lib/imageWorkflows/nanoBanana";
 import { persistSceneImageResult } from "@/lib/storage/sceneImages";
+import { getCharacterGroupAssets, matchGroupAssetsForScene } from "@/lib/groups/characterGroups";
 
 type SeriesCharacter = {
   id: string;
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
       include: {
         episode: {
           include: {
-            series: { include: { characters: true, environments: true } },
+            series: { include: { characters: true, environments: true, assets: true } },
           },
         },
       },
@@ -124,6 +125,7 @@ export async function POST(req: NextRequest) {
     if (!scene) return NextResponse.json({ error: "Scène non trouvée" }, { status: 404 });
 
     const { series } = scene.episode;
+    const groupAssets = getCharacterGroupAssets(series.assets || []);
 
     const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
     const presentChars = series.characters.filter((c: SeriesCharacter & {
@@ -152,6 +154,11 @@ export async function POST(req: NextRequest) {
     const matchedEnv = series.environments.find((e: SeriesEnvironment) =>
       scene.location?.toLowerCase().includes(e.name.toLowerCase())
     ) || series.environments[0];
+    const matchedGroups = matchGroupAssetsForScene({
+      groups: groupAssets,
+      sceneCharacters: sceneCharNames,
+      sceneText: [scene.location, scene.action, scene.narration, scene.dialogue].filter(Boolean).join(" "),
+    }).slice(0, 2);
 
     const envDesc = matchedEnv
       ? `${matchedEnv.name} — ${matchedEnv.description}${matchedEnv.lighting ? `. ${matchedEnv.lighting}` : ""}${matchedEnv.mood ? `. ${matchedEnv.mood}` : ""}`
@@ -164,13 +171,16 @@ export async function POST(req: NextRequest) {
       if (dna?.lockedPrompt) return `${c.name}${photoTag}: ${dna.lockedPrompt}`;
       return `${c.name}${photoTag}: ${c.physicalDescription}. Outfit: ${c.outfit}.`;
     }).join("\n");
+    const groupLines = matchedGroups.length > 0
+      ? `\nGROUP REFERENCES:\n${matchedGroups.map((group) => `${group.name} (${group.metadata.category}) — members: ${group.metadata.members.join(", ")}`).join("\n")}`
+      : "";
 
     const prompt = buildScenePrompt({
       action: scene.action || "dramatic cinematic moment",
       envDesc,
       emotion: scene.emotion || "dramatic",
       camera: scene.camera || "medium shot",
-      charLines,
+      charLines: `${charLines}${groupLines}`,
       visualStyle: series.visualStyle,
     });
 

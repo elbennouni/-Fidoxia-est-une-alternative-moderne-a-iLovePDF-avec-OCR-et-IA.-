@@ -8,6 +8,7 @@ import { resolveSceneCharacterReferences, validateNanoBananaAutoRoute } from "@/
 import { readFile } from "fs/promises";
 import path from "path";
 import { persistSceneImageResult } from "@/lib/storage/sceneImages";
+import { getCharacterGroupAssets, matchGroupAssetsForScene } from "@/lib/groups/characterGroups";
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
@@ -83,7 +84,7 @@ export async function POST(req: NextRequest) {
       include: {
         episode: {
           include: {
-            series: { include: { characters: true, environments: true } },
+            series: { include: { characters: true, environments: true, assets: true } },
           },
         },
       },
@@ -150,6 +151,17 @@ export async function POST(req: NextRequest) {
       scene.location?.toLowerCase().includes(e.name.toLowerCase())
     ) || series.environments[0];
 
+    const matchedGroups = matchGroupAssetsForScene({
+      groups: getCharacterGroupAssets(series.assets),
+      sceneCharacters: sceneCharNames,
+      sceneText: [
+        scene.location || "",
+        scene.action || "",
+        scene.narration || "",
+        scene.dialogue || "",
+      ].join(" "),
+    }).slice(0, 2);
+
     const envPreview = (matchedEnv as typeof matchedEnv & { previewImageUrl?: string | null })?.previewImageUrl;
 
     // Build reference images list (characters first, then env)
@@ -159,6 +171,13 @@ export async function POST(req: NextRequest) {
         name: resolvedRefs.uploadedChars[index] || `ref-${index + 1}`,
         url,
       })),
+      ...matchedGroups
+        .filter((group) => group.url)
+        .map((group) => ({
+          type: "group",
+          name: group.name,
+          url: group.url!,
+        })),
       ...(envPreview ? [{ type: "environment", name: matchedEnv!.name, url: envPreview }] : []),
     ];
 
@@ -224,6 +243,12 @@ CAMERA: ${scene.camera || "medium shot"}
 
 CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character appearance from reference descriptions. Same face, same outfit, same accessories. No character identity changes allowed.`;
 
+    const groupReferenceBlock = matchedGroups.length > 0
+      ? `\nGROUP REFERENCES: ${matchedGroups.map((group) => `${group.name} (${group.metadata.category})`).join(" | ")}. If the scene is about a team/family/group presentation, preserve the exact full group composition from the provided group reference images, especially when placing the presenter in the center and the group around them.`
+      : "";
+
+    const promptWithGroups = `${prompt}${groupReferenceBlock}`;
+
     // ─── GENERATE ───────────────────────────────────────────────────────────────
 
     const width = format === "9:16" ? 576 : 1024;
@@ -236,7 +261,7 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
 
       const response = await openai.images.generate({
         model: "dall-e-3",
-        prompt: prompt.slice(0, 4000),
+          prompt: promptWithGroups.slice(0, 4000),
         n: 1,
         size: size as "1024x1024" | "1024x1792" | "1792x1024",
         quality: quality as "standard" | "hd",
@@ -245,7 +270,7 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
 
     } else if (generator.provider === "Replicate" && generator.replicateModel) {
       const replicateInput: Record<string, unknown> = {
-        prompt: prompt.slice(0, 2000),
+        prompt: promptWithGroups.slice(0, 2000),
         width,
         height,
         num_outputs: 1,
@@ -312,7 +337,7 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
         : { width: 1024, height: 576 };
 
       const falBody: Record<string, unknown> = {
-        prompt: prompt.slice(0, 2000),
+        prompt: promptWithGroups.slice(0, 2000),
         image_size: falImageSize,
         num_images: 1,
         enable_safety_checker: false,
@@ -350,7 +375,7 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
       const togetherRes = await fetch("https://api.together.xyz/v1/images/generations", {
         method: "POST",
         headers: { "Authorization": `Bearer ${togetherKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ model: generator.model, prompt: prompt.slice(0, 2000), width, height, steps: 4, n: 1 }),
+        body: JSON.stringify({ model: generator.model, prompt: promptWithGroups.slice(0, 2000), width, height, steps: 4, n: 1 }),
       });
       if (!togetherRes.ok) throw new Error(`Together.ai erreur ${togetherRes.status}: ${await togetherRes.text().then(t => t.slice(0, 200))}`);
       const togetherData = await togetherRes.json();
@@ -363,7 +388,7 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
       const hfRes = await fetch(`https://api-inference.huggingface.co/models/${generator.model}`, {
         method: "POST",
         headers: { "Authorization": `Bearer ${hfKey}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ inputs: prompt.slice(0, 1500) }),
+        body: JSON.stringify({ inputs: promptWithGroups.slice(0, 1500) }),
       });
       if (!hfRes.ok) throw new Error(`HuggingFace erreur ${hfRes.status}: ${await hfRes.text().then(t => t.slice(0, 200))}`);
       const hfBuffer = Buffer.from(await (await hfRes.blob()).arrayBuffer());
@@ -373,7 +398,7 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
       const stabKey = process.env.STABILITY_API_KEY;
       if (!stabKey) throw new Error("STABILITY_API_KEY manquante — ajoutez-la dans Paramètres");
       const form = new FormData();
-      form.append("prompt", prompt.slice(0, 2000));
+      form.append("prompt", promptWithGroups.slice(0, 2000));
       form.append("aspect_ratio", format === "9:16" ? "9:16" : "16:9");
       form.append("output_format", "webp");
       const stabRes = await fetch(`https://api.stability.ai/v2beta/${generator.model}`, {
@@ -391,7 +416,7 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
         const size = format === "9:16" ? "1024x1792" : "1792x1024";
         const response = await openai.images.generate({
           model: "dall-e-3",
-          prompt: prompt.slice(0, 4000),
+            prompt: promptWithGroups.slice(0, 4000),
           n: 1,
           size: size as "1024x1024" | "1024x1792" | "1792x1024",
           quality: "standard",
@@ -424,6 +449,7 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
       sceneId,
       generator: generator.name,
       refImagesUsed: refImages.map(r => `${r.name} (${r.type})`),
+      matchedGroups: matchedGroups.map((group) => group.name),
       charactersWithPhoto: presentChars.filter((c: typeof presentChars[number]) => c.referenceImageUrl).map((c: typeof presentChars[number]) => c.name),
       charactersWithDNA: presentChars.filter((c: typeof presentChars[number]) => c.visualDNA).map((c: typeof presentChars[number]) => c.name),
     });
