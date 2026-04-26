@@ -122,6 +122,7 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
   const [generatingImage, setGeneratingImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState<string | null>(null);
   const [voices, setVoices] = useState<HeyGenVoice[]>([]);
+  const [voiceCatalogNote, setVoiceCatalogNote] = useState("");
   const [showVoicePanel, setShowVoicePanel] = useState<string | null>(null);
   const [pendingUploadCharId, setPendingUploadCharId] = useState<string | null>(null);
   const [playingVoice, setPlayingVoice] = useState<string | null>(null);
@@ -231,6 +232,11 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
         }))),
       ]);
       setVoices(mergedVoices);
+      const notes = [
+        elevenData.source !== "elevenlabs" ? "ElevenLabs est en mode mock sur cette session" : "",
+        heygenData.source !== "heygen" ? "HeyGen est en mode mock sur cette session" : "",
+      ].filter(Boolean);
+      setVoiceCatalogNote(notes.join(" • "));
     } catch {}
   }
 
@@ -571,6 +577,11 @@ export default function CharactersPage({ params }: { params: Promise<{ id: strin
             <div className="mb-4 rounded-xl border border-blue-600/20 bg-blue-900/10 px-3 py-2 text-xs text-blue-200">
               Ordre conseillé: <span className="font-semibold text-white">ElevenLabs d'abord</span>, puis <span className="font-semibold text-white">HeyGen</span> en second.
             </div>
+            {voiceCatalogNote && (
+              <div className="mb-4 rounded-xl border border-amber-600/20 bg-amber-900/10 px-3 py-2 text-xs text-amber-200">
+                {voiceCatalogNote}
+              </div>
+            )}
             <div className="space-y-2">
               {voices.map(voice => (
                 <div key={voice.voice_id} className={`flex items-center gap-3 p-3 border rounded-xl transition-all ${playingVoice === voice.voice_id ? "border-green-500/50 bg-green-900/10" : "bg-[#1e1e2e] border-[#2a2a3e] hover:border-orange-500/50"}`}>
