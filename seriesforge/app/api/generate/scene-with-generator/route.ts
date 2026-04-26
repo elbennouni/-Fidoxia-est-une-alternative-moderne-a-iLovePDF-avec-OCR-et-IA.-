@@ -4,7 +4,7 @@ import Replicate from "replicate";
 import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { IMAGE_GENERATORS } from "@/lib/generators";
-import { validateNanoBananaAutoRoute } from "@/lib/imageWorkflows/nanoBanana";
+import { resolveSceneCharacterReferences, validateNanoBananaAutoRoute } from "@/lib/imageWorkflows/nanoBanana";
 import { readFile } from "fs/promises";
 import path from "path";
 
@@ -139,6 +139,11 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
+    const resolvedRefs = await resolveSceneCharacterReferences({
+      presentChars,
+      maxImages: 8,
+    });
+
     // Get matching environment
     const matchedEnv = series.environments.find((e: typeof series.environments[number]) =>
       scene.location?.toLowerCase().includes(e.name.toLowerCase())
@@ -148,17 +153,17 @@ export async function POST(req: NextRequest) {
 
     // Build reference images list (characters first, then env)
     const refImages: Array<{ type: string; name: string; url: string }> = [
-      ...presentChars.filter((c: typeof presentChars[number]) => c.referenceImageUrl).map((c: typeof presentChars[number]) => ({
+      ...resolvedRefs.inputImageUrls.map((url, index) => ({
         type: "character",
-        name: c.name,
-        url: c.referenceImageUrl!,
+        name: resolvedRefs.uploadedChars[index] || `ref-${index + 1}`,
+        url,
       })),
       ...(envPreview ? [{ type: "environment", name: matchedEnv!.name, url: envPreview }] : []),
     ];
 
-    if (multiCharacterScene && generator.multiCharacterSafe && refImages.filter(r => r.type === "character").length < presentChars.length) {
+    if (multiCharacterScene && generator.multiCharacterSafe && resolvedRefs.uploadedChars.length < presentChars.length) {
       return NextResponse.json({
-        error: `Références personnage insuffisantes pour une scène multi-personnages. Ajoutez une photo de référence pour: ${presentChars.filter((c: typeof presentChars[number]) => !c.referenceImageUrl).map((c: typeof presentChars[number]) => c.name).join(", ")}.`,
+        error: `Références personnage insuffisantes pour une scène multi-personnages. Photos valides: ${resolvedRefs.uploadedChars.join(", ") || "aucune"}${resolvedRefs.assignedButInvalid.length ? ` · assignées mais illisibles: ${resolvedRefs.assignedButInvalid.join(", ")}` : ""}${resolvedRefs.missingRefs.length ? ` · manquantes: ${resolvedRefs.missingRefs.join(", ")}` : ""}.`,
         recommendedGeneratorId: "nano-banana-pro",
       }, { status: 400 });
     }
@@ -248,7 +253,7 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
       };
 
       // img2img: pass character photo as reference
-      if (generator.supportsImgToImg && refImages.length > 0) {
+      if (generator.supportsReference && refImages.length > 0) {
         const charRef = refImages.find(r => r.type === "character");
         if (charRef) {
           const uri = await toBase64Uri(charRef.url);
@@ -314,7 +319,7 @@ CRITICAL: Render ONLY in ${series.visualStyle} style. Maintain exact character a
       };
 
       // Send character reference image for img2img models
-      if (generator.supportsImgToImg && refImages.length > 0) {
+      if (generator.supportsReference && refImages.length > 0) {
         const charRef = refImages.find(r => r.type === "character");
         if (charRef) {
           const uri = await toBase64Uri(charRef.url);

@@ -10,6 +10,7 @@ import { prisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/lib/auth";
 import { readFile } from "fs/promises";
 import path from "path";
+import { resolveSceneCharacterReferences } from "@/lib/imageWorkflows/nanoBanana";
 
 const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
 
@@ -60,7 +61,14 @@ export async function POST(req: NextRequest) {
       where: { id: sceneId, episode: { series: { userId: user.id } } },
       include: {
         episode: {
-          include: { series: true },
+          include: {
+            series: {
+              include: {
+                characters: true,
+                environments: true,
+              },
+            },
+          },
         },
       },
     });
@@ -75,9 +83,20 @@ export async function POST(req: NextRequest) {
     const videoPrompt = scene.videoPrompt ||
       `${series.visualStyle}, ${scene.action || "cinematic animated scene"}, ${scene.emotion || "dramatic"}, smooth motion, 9:16 vertical format`;
 
-    // Get scene image as first frame (img2video)
+    const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
+    const presentChars = series.characters.filter((character: typeof series.characters[number]) =>
+      sceneCharNames.some((name: string) => name.toLowerCase().includes(character.name.toLowerCase()))
+    );
+    const referenceContext = await resolveSceneCharacterReferences({
+      presentChars,
+      maxImages: 4,
+    });
+
+    // Get scene image as first frame (img2video), otherwise use the first valid reference image
     const imageUrl = scene.imageUrl;
-    const publicImageUrl = imageUrl && falKey ? await toPublicUrl(imageUrl, falKey) : null;
+    const publicImageUrl = imageUrl && falKey
+      ? await toPublicUrl(imageUrl, falKey)
+      : referenceContext.inputImageUrls[0] || null;
 
     let videoUrl = "";
     let generatorUsed = "";

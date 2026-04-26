@@ -12,6 +12,7 @@ type SceneCharacter = {
   referenceImageUrl: string | null;
   faceReferenceImages?: unknown;
   fullBodyReferenceImages?: unknown;
+  outfitReferenceImages?: unknown;
 };
 
 type SceneEnvironment = {
@@ -79,6 +80,7 @@ function collectCharacterReferenceCandidates(character: SceneCharacter): string[
   const candidates = [
     ...parseReferenceList(character.faceReferenceImages),
     ...parseReferenceList(character.fullBodyReferenceImages),
+    ...parseReferenceList(character.outfitReferenceImages),
     ...(character.referenceImageUrl ? [character.referenceImageUrl] : []),
   ];
 

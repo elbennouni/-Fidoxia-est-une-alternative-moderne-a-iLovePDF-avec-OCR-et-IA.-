@@ -10,6 +10,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { readFile } from "fs/promises";
 import path from "path";
 import { generateSceneWithNanoBanana } from "@/lib/imageWorkflows/nanoBanana";
+import { resolveSceneCharacterReferences } from "@/lib/imageWorkflows/nanoBanana";
 
 type SeriesCharacter = {
   id: string;
@@ -124,10 +125,19 @@ export async function POST(req: NextRequest) {
     const { series } = scene.episode;
 
     const sceneCharNames: string[] = JSON.parse(scene.charactersJson || "[]");
-    const presentChars = series.characters.filter((c: SeriesCharacter) =>
+    const presentChars = series.characters.filter((c: SeriesCharacter & {
+      faceReferenceImages?: unknown;
+      fullBodyReferenceImages?: unknown;
+    }) =>
       sceneCharNames.some(sc => sc.toLowerCase().includes(c.name.toLowerCase()))
     );
-    const charsWithPhoto = presentChars.filter((c: SeriesCharacter) => c.referenceImageUrl);
+    const resolvedReferences = await resolveSceneCharacterReferences({
+      presentChars,
+      maxImages: 4,
+    });
+    const charsWithPhoto = presentChars.filter((c: typeof presentChars[number]) =>
+      resolvedReferences.uploadedChars.includes(c.name)
+    );
 
     if (presentChars.length > 1) {
       return NextResponse.json(await generateSceneWithNanoBanana({
@@ -163,11 +173,10 @@ export async function POST(req: NextRequest) {
       visualStyle: series.visualStyle,
     });
 
-    // Get primary reference photo as public URL
+    // Get the strongest available reference image and optional extra refs
     const primaryChar = charsWithPhoto[0];
-    const primaryRefUrl = primaryChar?.referenceImageUrl
-      ? await toPublicUrl(primaryChar.referenceImageUrl, falKey)
-      : null;
+    const primaryRefUrl = resolvedReferences.inputImageUrls[0] || null;
+    const extraReferenceUrls = resolvedReferences.inputImageUrls.slice(1, 4);
 
     let imageUrl = "";
     let modelUsed = "";
@@ -180,7 +189,7 @@ export async function POST(req: NextRequest) {
         headers: { "Authorization": `Key ${falKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           prompt: prompt.slice(0, 1500),
-          reference_image_urls: [primaryRefUrl],
+          reference_image_urls: [primaryRefUrl, ...extraReferenceUrls],
           image_size: "portrait_16_9",
           num_images: 1,
           rendering_speed: "BALANCED",
@@ -190,7 +199,7 @@ export async function POST(req: NextRequest) {
       if (!res.ok) throw new Error(`Ideogram Character ${res.status}: ${(await res.text()).slice(0, 300)}`);
       const data = await res.json();
       imageUrl = data.images?.[0]?.url || "";
-      refImagesUsed = primaryChar ? [primaryChar.name] : [];
+      refImagesUsed = resolvedReferences.uploadedChars;
 
     } else if (model === "instant-character" && primaryRefUrl) {
       modelUsed = "Instant Character";
@@ -211,7 +220,7 @@ export async function POST(req: NextRequest) {
       if (!res.ok) throw new Error(`Instant Character ${res.status}: ${(await res.text()).slice(0, 300)}`);
       const data = await res.json();
       imageUrl = data.images?.[0]?.url || "";
-      refImagesUsed = [primaryChar.name];
+      refImagesUsed = resolvedReferences.uploadedChars;
 
     } else if (model === "minimax-subject" && primaryRefUrl) {
       modelUsed = "MiniMax Subject Reference";
@@ -229,7 +238,7 @@ export async function POST(req: NextRequest) {
       if (!res.ok) throw new Error(`MiniMax Subject ${res.status}: ${(await res.text()).slice(0, 300)}`);
       const data = await res.json();
       imageUrl = data.images?.[0]?.url || "";
-      refImagesUsed = [primaryChar.name];
+      refImagesUsed = resolvedReferences.uploadedChars;
 
     } else {
       // Fallback: FLUX Schnell (no reference)
